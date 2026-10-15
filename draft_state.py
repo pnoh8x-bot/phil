@@ -3,8 +3,10 @@ from datetime import datetime,timezone
 from recommendations import yahoo_id,infer_slot
 from yahoo_sync import validate_snapshot
 
-def derive_state(raw,league,season,team_id,teams=12):
+def derive_state(raw,league,season,team_id,teams=12,room_id=None):
     s=validate_snapshot(raw,league,season)
+    if room_id is not None and (not s.get('live') or str(s.get('room_id'))!=str(room_id)):
+        raise ValueError('연결된 모크 방의 결과가 아닙니다. 확장 0.2.4 이상에서 해당 방의 Results → Round by Round를 수집하세요.')
     if s.get('draft_teams') and s['draft_teams']!=teams:raise ValueError('Observed team count differs from this 12-team model')
     teamnames={str(t['id']):t['name'] for t in s.get('teams',[]) if isinstance(t,dict) and 'id' in t and 'name' in t}
     own_label='__OUR_TEAM__' if s.get('live') else teamnames.get(str(team_id))

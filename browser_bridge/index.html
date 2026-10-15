@@ -22,7 +22,7 @@ window.addEventListener('message',e=>{
   if(args.board_to_save&&packet&&args.board_scope?.league_id===packet.config.league_id&&args.board_scope?.season===packet.config.season&&args.board_scope?.team_id===packet.config.team_id){packet.board_override=args.board_to_save;packet.board_basis=args.board_basis;persist();}
   if(args.ack_revision&&packet?.snapshot?.revision===args.ack_revision){
    receipt();
-   bridge('NBA_HELPER_ACK',{league_id:packet.config.league_id,revision:args.ack_revision});
+   bridge('NBA_HELPER_ACK',{league_id:packet.config.league_id,room_id:packet.snapshot.room_id,revision:args.ack_revision});
   }
   bridge('NBA_HELPER_READY',{league_id:args.league_id,season:args.season});
   return;

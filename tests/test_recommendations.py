@@ -191,6 +191,12 @@ def test_pause_reasons_distinguish_stale_clock_gaps_and_partial_observation():
     b=snapshot();b['history_complete']=False;s=derive_state(b,'123',2026,'9');assert {x['code'] for x in s['pause_reasons']}=={'unverified_history'}
     s=derive_state(snapshot(),'123',2026,'9');assert s['ready'] and not s['pause_reasons']
 
+def test_mock_room_requires_matching_live_identity_not_league_result_cache():
+    b=snapshot();rejects(lambda:derive_state(b,'123',2026,'9',room_id='456'))
+    b['room_id']='456';assert derive_state(b,'123',2026,'9',room_id='456')['ready']
+    b['room_id']='789';rejects(lambda:derive_state(b,'123',2026,'9',room_id='456'))
+    b['room_id']='456';b['live']=False;rejects(lambda:derive_state(b,'123',2026,'9',room_id='456'))
+
 def test_different_round_one_two_pairs_select_different_best_punts():
     m=evaluate_board(fixture());m.z.loc[:,:]=1
     m.z.loc[['1','2'],['PTS','REB']]=[-4,-3]

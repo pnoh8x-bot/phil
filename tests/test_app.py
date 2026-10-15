@@ -74,3 +74,14 @@ def test_prior_season_browser_stats_never_become_current_projections():
     assert any('통계 시즌이 연결 시즌과 다릅니다' in x.value for x in at.error)
     assert not any('Yahoo ID' in x.value for x in at.markdown)
 
+def test_room_bound_component_allows_only_matching_mock_history():
+    for actual_room,valid in [('456',True),('789',False)]:
+        raw=snapshot();raw['revision']=25;raw['room_id']=actual_room
+        b=fixture();b['ADP_RANK']=1;raw['board']=b.to_dict('records')
+        packet={'config':{'league_id':'123','team_id':'9','season':2026,'draft_room_id':'456'},'snapshot':raw}
+        with patch('streamlit.components.v1.declare_component',return_value=lambda **kw:packet):
+            at=AppTest.from_file(str(Path(__file__).parents[1]/'app.py')).run()
+        assert not at.exception
+        assert any('Yahoo ID' in x.value for x in at.markdown)==valid
+        if not valid:assert any('연결된 모크 방의 결과가 아닙니다' in x.value for x in at.error)
+

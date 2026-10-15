@@ -1,5 +1,7 @@
 # NBA Draft Helper
 
+0.2.4 isolates mock-room draft identity from ordinary league pages. Live clocks/ownership are marked on every live capture, not only a Results capture. An empty real-league Draft Results page cannot erase a mock's picks or freshness. Changing rooms clears only the active draft state and archives the prior room in extension storage; general player statistics/ADP may still enrich the board. Cached packets from another room are not published or accepted by the bound Helper. A mock connection's Results shortcut directs the user to the existing mock tab instead of opening a real-league results page. Actual post-update mock testing is still required.
+
 0.2.3 fixes later-round clock parsing: `Round 2, Pick 18` (overall) and `Round 2, Pick 6` (within round) both map to overall 18 in this 12-team model. Inconsistent round/pick combinations are rejected. Missing live clocks invalidate the stored current pick and pause recommendations; no historical first-round clock is reused and partial records never establish the live current pick.
 
 12-team H2H 9CAT snake draft assistant. Yahoo API access is not required. Draft actions remain in Yahoo.

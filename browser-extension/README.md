@@ -1,4 +1,6 @@
-# Yahoo browser bridge 0.2.3
+# Yahoo browser bridge 0.2.4
+
+Mock-room picks/clock/owner identity cannot be overwritten by ordinary league Results pages. Stats/ADP from normal player pages remain usable. Live captures mark their room even on Players. Previous rooms are archived before activating another room, and mismatched cached rooms are not sent to Helper. The Results shortcut in a mock connection asks you to use Results → Round by Round in the existing draft tab; it does not open the real league's results. Post-update actual-room validation is still needed.
 
 Later-round visible clocks support both overall and within-round Pick numbering, checked against the displayed Round. Missing live clocks clear the stored current pick and pause recommendations rather than reusing a first-round value. The single-client correction below remains in force.
 

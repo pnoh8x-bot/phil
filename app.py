@@ -56,7 +56,7 @@ with st.expander('검증된 통계 파일 · 백업'):
     if restored and st.button('검증 후 복원'):
         try:
             v=json.loads(restored.getvalue());c=v['config']
-            derive_state(v['snapshot'],c['league_id'],c['season'],c['team_id'])
+            derive_state(v['snapshot'],c['league_id'],c['season'],c['team_id'],room_id=c.get('draft_room_id'))
             if v.get('board_override'):evaluate_board(pd.DataFrame(v['board_override']),v.get('board_basis'))
             st.session_state.restore_packet=v;st.rerun()
         except (ValueError,TypeError,KeyError) as e:st.error('백업 검증 실패: '+str(e))
@@ -64,7 +64,7 @@ with st.expander('검증된 통계 파일 · 백업'):
 raw=st.session_state.get('snapshot');cfg=st.session_state.get('config',{})
 if raw and cfg:
     try:
-        derive_state(raw,cfg['league_id'],cfg['season'],cfg['team_id'])
+        derive_state(raw,cfg['league_id'],cfg['season'],cfg['team_id'],room_id=cfg.get('draft_room_id'))
         revision=raw.get('revision')
         if revision and revision!=st.session_state.get('ack_revision'):
             st.session_state.ack_revision=revision;st.rerun()
@@ -76,7 +76,7 @@ def dashboard():
     if not raw or not c:
         st.info('Yahoo 관찰 수신을 기다립니다. 확장을 설정하고 연결 시작을 눌러주세요.');return
     try:
-        state=derive_state(raw,c['league_id'],c['season'],c['team_id'])
+        state=derive_state(raw,c['league_id'],c['season'],c['team_id'],room_id=c.get('draft_room_id'))
         st.info(f"리그 {c['league_id']} · 수신 버전 {raw.get('revision','—')} · 지명 {len(state['drafted'])}명 · 내 순번 {state['slot'] or '미확인'} · 현재 전체 픽 {state['current'] or '미확인'}")
         if raw.get('connection_error'):
             st.error(raw['connection_error']);return

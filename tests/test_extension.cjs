@@ -47,5 +47,39 @@ o.picks=Array.from({length:17},(_,i)=>({pick:i+1,player_id:String(i+1),player:'S
 let s=reduce(old,o,config);assert.equal(s.current_pick,undefined);assert.equal(s.history_complete,false);assert.equal(s.picks.length,17);
 o.current_pick=18;s=reduce(s,o,config);assert.equal(s.current_pick,18);assert.equal(s.history_complete,true);
 });
+await test('normal league empty results cannot erase mock history, owner mode, clock or freshness',()=>{
+const c={...config,draft_room_id:'456'},o={...base(),room_id:'456'};let s=reduce(null,o,c);const stamp=s.picks_at;
+s=reduce(s,{league_id:'123',season:2026,result_page:true,picks:[],draft_status:'Draft scheduled',captured_at:'later',source_url:'league-results'},c);
+assert.equal(s.picks.length,2);assert.equal(s.live,true);assert.equal(s.room_id,'456');assert.equal(s.current_pick,3);assert.equal(s.picks_at,stamp);assert.equal(s.history_complete,true);assert.notEqual(s.draft_status,'Draft scheduled');
+});
+await test('normal stats and ADP enrich the mock without supplying pick ownership',()=>{
+const c={...config,draft_room_id:'456'};let s=reduce(null,{...base(),room_id:'456'},c);
+s=reduce(s,{league_id:'123',season:2026,result_page:true,picks:[],players:[{YAHOO_ID:'3',STAT_SOURCE:'Remaining Games (proj)',STAT_SEASON:2026,STAT_BASIS:'season_total',FGM:3,FGA:5,FTM:1,FTA:2}],adp:[{YAHOO_ID:'3',ADP_AVG:33}],captured_at:'later'},c);
+assert.equal(s.board[0].FGA,5);assert.equal(s.board[0].ADP_AVG,33);assert.equal(s.picks.length,2);assert.equal(s.live,true);
+});
+await test('live Players capture fixes owner mode without inventing any results',()=>{
+const c={...config,draft_room_id:'456'};let s=reduce(null,{league_id:'123',season:2026,result_page:true,picks:[],captured_at:'old'},config);
+s=reduce(s,{...base(),room_id:'456',results_visible:false,picks:[],current_pick:64,draft_slot:12},c);
+assert.equal(s.live,true);assert.equal(s.room_id,'456');assert.equal(s.picks.length,0);assert.equal(s.history_complete,false);assert.equal(s.picks_at,null);assert.equal(s.current_pick,64);
+});
+await test('new mock room resets only draft state and old room is never published as new room',async()=>{
+const a={...config,draft_room_id:'456'},b={...config,draft_room_id:'789'};let s=reduce(null,{...base(),room_id:'456'},a);
+const storage=mockStorage({nbaConfig:b,'nba:123:2026':s}),sent=[];const win={location:{origin:'https://nba-draft-helper.onrender.com'},postMessage:m=>sent.push(m),addEventListener:()=>{}};const t=bind(storage,win);await t.handle({source:win,origin:win.location.origin,data:{type:'NBA_HELPER_READY'}});assert.ok(!sent.some(m=>m.type==='NBA_HELPER_SNAPSHOT'));
+s=reduce(s,{...base(),room_id:'789',results_visible:false,picks:[],current_pick:1,draft_slot:8},b);assert.equal(s.picks.length,0);assert.equal(s.room_id,'789');assert.equal(s.draft_slot,8);assert.equal(s.picks_at,null);
+});
+await test('worker archives the previous room before switching draft state',async()=>{
+const old=reduce(null,{...base(),room_id:'456'},{...config,draft_room_id:'456'});
+const storage=mockStorage({nbaConfig:{...config,draft_room_id:'789'},'nba:123:2026':old});let listener;
+const chrome={storage:{local:storage},runtime:{onMessage:{addListener:fn=>listener=fn}}};
+vm.runInNewContext(fs.readFileSync(require.resolve('../browser-extension/background.js'),'utf8'),{chrome,console,importScripts:()=>{},NBAState:{reduce}});
+const response=await new Promise(resolve=>listener({type:'NBA_CAPTURE',observation:{...base(),room_id:'789',results_visible:false,picks:[],current_pick:1}},{tab:{id:10}},resolve));
+assert.equal(response.ok,true);assert.equal(storage.data['nba:123:2026:archive:456'].picks.length,2);assert.equal(storage.data['nba:123:2026'].picks.length,0);
+});
+await test('popup restores team identity, preserves legacy room and never opens real results for mock',async()=>{
+const data={nbaConfig:{...config,draft_room_id:'456'}},storage=mockStorage(data),elements=Object.fromEntries(['team','room','status','start','stop','results','players','adp','helper'].map(k=>[k,{value:'',textContent:''}])),tabs=[];
+vm.runInNewContext(fs.readFileSync(require.resolve('../browser-extension/popup.js'),'utf8'),{document:{getElementById:k=>elements[k]},chrome:{storage:{local:storage},tabs:{create:x=>tabs.push(x)}},URL,Date});await Promise.resolve();await Promise.resolve();
+assert.equal(elements.team.value,'https://basketball.fantasysports.yahoo.com/nba/123/9');await elements.start.onclick();assert.equal(storage.data.nbaConfig.draft_room_id,'456');elements.results.onclick();assert.equal(tabs.length,0);
+elements.room.value='https://basketball.fantasysports.yahoo.com/draftclient/nba/789/9?auth=synthetic-secret';await elements.start.onclick();assert.equal(storage.data.nbaConfig.draft_room_id,'789');assert.equal(storage.data.nbaConfig.draft_room_url,'https://basketball.fantasysports.yahoo.com/draftclient/nba/789/9');assert.ok(!JSON.stringify(storage.data.nbaConfig).includes('auth='));
+});
 process.stdout.write(tests+' JavaScript checks passed (mock Chrome API)\n');
 })().catch(e=>{console.error(e);process.exitCode=1});
