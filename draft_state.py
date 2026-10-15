@@ -26,12 +26,17 @@ def derive_state(raw,league,season,team_id,teams=12,room_id=None):
     try:age=(datetime.now(timezone.utc)-datetime.fromisoformat(stamp.replace('Z','+00:00'))).total_seconds()
     except (ValueError,TypeError,AttributeError):age=None
     if age is not None and age< -10:raise ValueError('Observation timestamp is in the future')
+    capacity=s.get('roster_capacity')
+    if capacity is not None and (isinstance(capacity,bool) or not isinstance(capacity,int) or not 1<=capacity<=50):raise ValueError('Invalid observed roster capacity')
+    final_history=capacity is None or after-1==teams*capacity
+    completed=s.get('draft_status')=='complete' and final_history and s['complete_pick_sequence'] and bool(s['picks']) and s.get('history_complete',False) and current==after
     fresh=age is not None and -10<=age<=45
     reasons=[]
     def pause(code,message):reasons.append({'code':code,'message':message})
+    if s.get('draft_status')=='complete' and not completed:pause('incomplete_final_history','Yahoo 드래프트는 종료됐지만 최종 지명 이력이 덜 수집됐습니다. 최종 결과를 수집한 뒤 로스터 평가를 유지합니다.')
     if s.get('connection_error'):pause('disconnected',s['connection_error'])
     if age is None:pause('no_result_timestamp','결과 표 수신 시간이 없습니다. 같은 Yahoo 탭에서 Results → Round by Round를 표시하세요.')
-    elif not fresh:pause('stale_results',f'마지막 지명 결과 수신이 {max(0,int(age))}초 전입니다(허용 45초). Yahoo 결과 화면을 열어 새 결과를 수집하세요.')
+    elif not fresh and not completed:pause('stale_results',f'마지막 지명 결과 수신이 {max(0,int(age))}초 전입니다(허용 45초). 자동 관찰을 기다리거나 Yahoo 결과 화면을 열어주세요.')
     if not own_label:pause('unknown_team','연결한 팀 ID와 Yahoo 결과의 내 팀을 아직 연결하지 못했습니다.')
     if slot is None:pause('unknown_slot','내 스네이크 지명 순번이 미확인입니다. Yahoo의 현재 차례 표시 또는 내 첫 지명 기록이 필요합니다.')
     if current is None:pause('unknown_clock','현재 전체 픽 번호를 읽지 못했습니다. Yahoo 상단 Round / Pick 표시가 보이는지 확인하세요.')
@@ -44,5 +49,5 @@ def derive_state(raw,league,season,team_id,teams=12,room_id=None):
     if not s.get('history_complete',True) and not missing:pause('unverified_history','마지막 결과 관찰이 전체 이력으로 검증되지 않았습니다. 지명 수가 맞아도 화면 일부만 수집했을 수 있습니다.')
     if not s['complete_pick_sequence'] and not missing:pause('discontinuous_history','지명 기록의 연결 상태가 불완전합니다.')
     return {'snapshot':s,'ours':ours,'drafted':drafted,'slot':slot,'current':current,'age_seconds':age,
-            'ready':not reasons,'pause_reasons':reasons,'missing_picks':missing,'history_next':after,
+            'ready':not reasons and not completed,'completed':completed,'pause_reasons':reasons,'missing_picks':missing,'history_next':after,
             'team_resolved':bool(own_label),'early_ids':ours[:2]}

@@ -10,27 +10,34 @@ function reduce(old,o,c){
   // Draft clocks, ownership and picks belong to a draft client, not the stats page.
   if(!s.live||s.room_id!==o.room_id){
    s.picks=[];s.picks_at=null;s.history_complete=false;
-   for(const k of ['current_pick','current_pick_at','current_pick_source','draft_slot','draft_teams','draft_status','connection_error','results_source_url'])delete s[k];
+   for(const k of ['current_pick','current_pick_at','current_pick_source','draft_slot','draft_teams','draft_status','roster_capacity','connection_error','results_source_url'])delete s[k];
   }
   s.live=true;s.room_id=o.room_id;
  }
  const ownsResults=!!o.live||(!c.draft_room_id&&!s.live);
  if(o.connection_error){s.connection_error=o.connection_error;s.history_complete=false;s.picks_at=null;s.captured_at=o.captured_at;s.revision=(s.revision||0)+1;return s;}
  if(o.live||!s.live)delete s.connection_error;
- if(o.live&&o.current_pick==null){delete s.current_pick;delete s.current_pick_at;delete s.current_pick_source;}
+ if(o.live&&o.current_pick==null&&!(o.draft_status==='complete'&&s.draft_status==='complete'&&s.history_complete)){delete s.current_pick;delete s.current_pick_at;delete s.current_pick_source;}
  const merge=(a,b)=>Object.values(Object.fromEntries([...a,...b].map(p=>[id(p.YAHOO_ID),{...p,YAHOO_ID:id(p.YAHOO_ID)}])));
  const quality=rows=>{const p=rows?.[0];if(!p)return -1;const year=p.STAT_SEASON||Number(p.STAT_SOURCE?.match(/20\d{2}/)?.[0]||c.season);if(year!==c.season||!['per_game','season_total'].includes(p.STAT_BASIS))return 0;const volume=['FGM','FGA','FTM','FTA'].every(k=>k in p);return (/Proj|\(proj\)/i.test(p.STAT_SOURCE||'')?2:0)+(volume?2:1);};
  // Retain observed shot volumes when the live table only has percentages.
  if(o.players?.length&&quality(o.players)>=quality(s.players)){const src=o.players[0].STAT_SOURCE;if(s.stat_source&&s.stat_source!==src)s.players=[];s.stat_source=src;s.players=merge(s.players,o.players);}
+ if(o.collection&&o.league_id===c.league_id&&o.collection.season===c.season)s.collection={...o.collection,players:s.players.length};
+ if(o.adp_collection&&o.league_id===c.league_id)s.adp_collection={...o.adp_collection,players:new Set([...(s.adp||[]),...(o.adp||[])].map(p=>p.YAHOO_ID)).size};
+ if(o.live&&o.monitor)s.monitor=o.monitor;
  s.adp=merge(s.adp,o.adp||[]);s.settings={...s.settings,...o.settings};if(o.teams?.length)s.teams=o.teams;
  if(ownsResults&&(o.results_visible||o.result_page)){
   const ps=(o.picks||[]).map(p=>({...p,player_id:id(p.player_id)})),seen=new Set(),ids=new Set();
   for(const p of ps){if(!Number.isInteger(p.pick)||p.pick<1||seen.has(p.pick)||ids.has(p.player_id))throw Error('Conflicting picks');seen.add(p.pick);ids.add(p.player_id);}
   const max=Math.max(0,...seen),full=seen.size===max&&(o.live?o.current_pick===max+1:o.current_pick==null||o.current_pick===max+1);
-  if(full){s.picks=ps;s.history_complete=true;}else{s.picks=Object.values(Object.fromEntries([...s.picks,...ps].map(p=>[p.pick,p])));s.history_complete=false;}
+  if(full){s.picks=ps;s.history_complete=true;}else{
+   s.picks=Object.values(Object.fromEntries([...s.picks,...ps].map(p=>[p.pick,p])));
+   const merged=new Set(s.picks.map(p=>p.pick)),unique=new Set(s.picks.map(p=>p.player_id));
+   s.history_complete=!!o.current_pick&&merged.size===o.current_pick-1&&unique.size===merged.size&&Array.from({length:o.current_pick-1},(_,i)=>i+1).every(p=>merged.has(p));
+  }
   s.picks.sort((a,b)=>a.pick-b.pick);s.picks_at=o.captured_at;s.live=!!o.live;s.results_source_url=o.source_url;
  }
- if(ownsResults)for(const k of ['draft_teams','draft_status','draft_slot','current_pick','current_pick_at','current_pick_source'])if(o[k]!=null)s[k]=o[k];
+ if(ownsResults)for(const k of ['draft_teams','draft_status','roster_capacity','draft_slot','current_pick','current_pick_at','current_pick_source'])if(o[k]!=null)s[k]=o[k];
  const adp=Object.fromEntries(s.adp.map(p=>[p.YAHOO_ID,p]));
  s.board=s.players.map(p=>({...p,...(adp[p.YAHOO_ID]||{}),ADP_RANK:1}));
  s.source_url=o.source_url;s.captured_at=o.captured_at;s.revision=(s.revision||0)+1;s.team_id=c.team_id;return s;

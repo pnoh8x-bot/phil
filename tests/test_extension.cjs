@@ -8,7 +8,7 @@ let tests=0;async function test(name,fn){await fn();tests++;process.stdout.write
 function mockStorage(initial){const data=structuredClone(initial),listeners=[];return {data,onChanged:{addListener:fn=>listeners.push(fn)},get:async keys=>typeof keys==='string'?{[keys]:data[keys]}:Object.fromEntries(keys.map(k=>[k,data[k]])),set:async changes=>{Object.assign(data,structuredClone(changes));for(const fn of listeners)fn(changes);},remove:async key=>{delete data[key];}};}
 (async()=>{
 await test('ID-only merge, ADP not rank, source URL has no query',()=>{let o=base();o.players=[{YAHOO_ID:'3',PLAYER:'Synthetic',PTS:1,STAT_SOURCE:'Proj',STAT_BASIS:'season_total'}];o.adp=[{YAHOO_ID:'3',ADP_AVG:8.2}];const s=reduce(null,o,config);assert.equal(s.board[0].ADP_AVG,8.2);assert.equal(s.picks.length,2);assert.equal(s.history_complete,true);});
-await test('incomplete virtualized results cannot erase picks',()=>{let s=reduce(null,base(),config);const o=base();o.picks=o.picks.slice(1);s=reduce(s,o,config);assert.equal(s.picks.length,2);assert.equal(s.history_complete,false);});
+await test('virtualized observations retain and verify a contiguous merged history',()=>{let s=reduce(null,base(),config);const o=base();o.picks=o.picks.slice(1);s=reduce(s,o,config);assert.equal(s.picks.length,2);assert.equal(s.history_complete,true);});
 await test('complete undo atomically replaces history',()=>{let s=reduce(null,base(),config),o=base();o.current_pick=2;o.picks=o.picks.slice(0,1);s=reduce(s,o,config);assert.equal(s.picks.length,1);assert.equal(s.current_pick,2);assert.equal(s.history_complete,true);});
 await test('wrong league, season, historical, duplicate IDs stop',()=>{for(const change of [{room_id:'456'},{season:2025},{historical:true},{picks:[{pick:1,player_id:'1'},{pick:2,player_id:'001'}]}])assert.throws(()=>reduce(null,{...base(),...change},config));});
 await test('changing statistic source clears previous baseline',()=>{let o=base();o.players=[{YAHOO_ID:'3',STAT_SOURCE:'A'}];let s=reduce(null,o,config);o.players=[{YAHOO_ID:'4',STAT_SOURCE:'B'}];s=reduce(s,o,config);assert.deepEqual(s.board.map(p=>p.YAHOO_ID),['4']);});
@@ -77,9 +77,57 @@ assert.equal(response.ok,true);assert.equal(storage.data['nba:123:2026:archive:4
 });
 await test('popup restores team identity, preserves legacy room and never opens real results for mock',async()=>{
 const data={nbaConfig:{...config,draft_room_id:'456'}},storage=mockStorage(data),elements=Object.fromEntries(['team','room','status','start','stop','results','players','adp','helper'].map(k=>[k,{value:'',textContent:''}])),tabs=[];
-vm.runInNewContext(fs.readFileSync(require.resolve('../browser-extension/popup.js'),'utf8'),{document:{getElementById:k=>elements[k]},chrome:{storage:{local:storage},tabs:{create:x=>tabs.push(x)}},URL,Date});await Promise.resolve();await Promise.resolve();
+vm.runInNewContext(fs.readFileSync(require.resolve('../browser-extension/popup.js'),'utf8'),{document:{getElementById:k=>elements[k]},chrome:{storage:{local:storage},runtime:{sendMessage:async()=>({ok:true})},tabs:{create:x=>tabs.push(x)}},URL,Date});await Promise.resolve();await Promise.resolve();
 assert.equal(elements.team.value,'https://basketball.fantasysports.yahoo.com/nba/123/9');await elements.start.onclick();assert.equal(storage.data.nbaConfig.draft_room_id,'456');elements.results.onclick();assert.equal(tabs.length,0);
 elements.room.value='https://basketball.fantasysports.yahoo.com/draftclient/nba/789/9?auth=synthetic-secret';await elements.start.onclick();assert.equal(storage.data.nbaConfig.draft_room_id,'789');assert.equal(storage.data.nbaConfig.draft_room_url,'https://basketball.fantasysports.yahoo.com/draftclient/nba/789/9');assert.ok(!JSON.stringify(storage.data.nbaConfig).includes('auth='));
+});
+await test('collector follows observed next links only and never crosses filter, origin or path',()=>{
+ const {nextPage}=require('../browser-extension/collector.js'),url='https://basketball.fantasysports.yahoo.com/nba/123/players?status=ALL&stat1=S_PSR&count=0';
+ const doc=href=>({querySelectorAll:()=>[{textContent:'Next 25',getAttribute:k=>k==='href'?href:null}]});
+ assert.match(nextPage(doc('?status=ALL&stat1=S_PSR&count=25'),url),/count=25#nba-helper-collect/);
+ for(const href of ['?status=A&stat1=S_PSR&count=25','?status=ALL&stat1=S_AS_2025&count=25','?status=ALL&stat1=S_PSR&count=0','https://evil.example/?count=25','/draftclient/nba/123/9?count=25'])assert.equal(nextPage(doc(href),url),null);
+});
+await test('25-row projection pages accumulate by exact ID and retain missing owned player until next page',()=>{
+ const page=(start)=>Array.from({length:25},(_,i)=>({YAHOO_ID:String(start+i),PLAYER:'Synthetic '+(start+i),STAT_SOURCE:'Remaining Games (proj)',STAT_SEASON:2026,STAT_BASIS:'season_total',GP:82,FGM:1,FGA:2,FTM:1,FTA:2}));
+ let o={...base(),players:page(1),collection:{season:2026,status:'collecting',page:1}};o.league_id='123';let s=reduce(null,o,config);
+ assert.equal(s.players.length,25);assert.ok(!s.players.find(p=>p.YAHOO_ID==='40'));
+ s=reduce(s,{...o,players:page(26),collection:{season:2026,status:'complete',page:2}},config);
+ assert.equal(s.players.length,50);assert.equal(s.collection.players,50);assert.ok(s.players.find(p=>p.YAHOO_ID==='40'));assert.equal(s.picks.length,2);
+});
+await test('completed draft does not lose final clock on later Players observations',()=>{
+ let o={...base(),draft_status:'complete'},s=reduce(null,o,config);delete o.current_pick;o.results_visible=false;o.picks=[];s=reduce(s,o,config);assert.equal(s.current_pick,3);assert.equal(s.picks.length,2);assert.equal(s.history_complete,true);
+});
+await test('automatic collection opens one ordinary tab, never a duplicate draft client, and authenticates designated sender',async()=>{
+ const storage=mockStorage({nbaConfig:{...config,auto_collect:true}}),tabs=[];let listener;
+ const chrome={storage:{local:storage},runtime:{onMessage:{addListener:fn=>listener=fn}},tabs:{create:async options=>{tabs.push(options);return {id:90};},get:async()=>({id:90})}};
+ vm.runInNewContext(fs.readFileSync(require.resolve('../browser-extension/background.js'),'utf8'),{chrome,console,importScripts:()=>{},NBAState:{reduce},Date});
+ const call=(m,id=10)=>new Promise(resolve=>listener(m,{tab:{id}},resolve));
+ await call({type:'NBA_CAPTURE',observation:base()});await new Promise(r=>setTimeout(r,0));await call({type:'NBA_CAPTURE',observation:base()});await new Promise(r=>setTimeout(r,0));
+ assert.equal(tabs.length,1);assert.match(tabs[0].url,/\/nba\/123\/players#nba-helper-collect$/);assert.equal(tabs[0].active,false);
+ assert.equal((await call({type:'NBA_COLLECTOR_HELLO'},90)).enabled,true);assert.equal((await call({type:'NBA_COLLECTOR_HELLO'},91)).enabled,false);
+});
+await test('automatic result views restore Players and never click a draft action',async()=>{
+ const monitor=require('../browser-extension/live-monitor.js');let selected='Players',clicks=[],captures=0;
+ const elements=['Players','Results','Round by Round','Draft','Autodraft'].map(name=>({textContent:name,className:'',parentElement:{className:''},getClientRects:()=>[1],getAttribute:key=>key==='aria-selected'?String(name===selected):null,click(){clicks.push(name);if(['Players','Results'].includes(name))selected=name;}}));
+ const table={parentElement:null,querySelectorAll:()=>[{textContent:'Pick Player Team'}]};
+ const doc={querySelectorAll:selector=>selector==='table'?(selected==='Results'?[table]:[]):selector==='table thead'?[]:elements};
+ const result=await monitor.observe({doc,url:'synthetic',capture:async()=>{captures++;},idle:()=>9999,delay:async()=>{}});
+ assert.equal(result.status,'observing');assert.equal(selected,'Players');assert.ok(captures);assert.deepEqual(clicks,['Results','Round by Round','Players']);
+ clicks=[];await monitor.observe({doc,capture:async()=>{},idle:()=>0,delay:async()=>{}});assert.equal(clicks.length,0);
+});
+await test('production collector runner walks stats pages then ADP pages and completes with persistent rows',async()=>{
+ const {nextPage,filterChange}=require('../browser-extension/collector.js');
+ let phase='stats',page=1,tick,done=false,state;
+ const c={...config,auto_collect:true},selects=Object.fromEntries([['statusselect','All Players','ALL'],['eteamselect','All Teams','ALL'],['fteamselect','No Team Selected','NONE'],['statselect','Remaining Games (proj)','S_PSR']].map(([id,text,value])=>[id,{value,options:[{textContent:text,value}]}]));
+ const loc={pathname:'/nba/123/players',href:'https://basketball.fantasysports.yahoo.com/nba/123/players?status=ALL&stat1=S_PSR&count=0',origin:'https://basketball.fantasysports.yahoo.com',assign(url){const u=new URL(url);loc.href=url;loc.pathname=u.pathname;if(u.pathname.endsWith('/draftanalysis')){phase='adp';page=1;}else page=2;}};
+ const doc={title:'',getElementById:id=>selects[id],querySelector:selector=>selector.includes('caret-right')?{closest:()=>page===1?{disabled:false,getAttribute:()=>null,click:()=>page=2}:{disabled:true,getAttribute:()=>null}}:null,querySelectorAll:()=>phase==='stats'&&page===1?[{textContent:'Next 25',getAttribute:k=>k==='href'?'?status=ALL&stat1=S_PSR&count=25':null}]:[]};
+ const chrome={storage:{local:{get:async()=>({nbaConfig:c})}},runtime:{sendMessage:async m=>{if(m.type==='NBA_COLLECTOR_HELLO')return {enabled:true};if(m.type==='NBA_COLLECTOR_ERROR')throw Error(m.error);state=reduce(state,m.observation,c);return {ok:true};}}};
+ const parser={parse:()=>({league_id:'123',season:2026,captured_at:new Date().toISOString(),source_url:'synthetic',players:phase==='stats'?Array.from({length:25},(_,i)=>({YAHOO_ID:String((page-1)*25+i+1),PLAYER:'Synthetic',STAT_SOURCE:'Remaining Games (proj)',STAT_SEASON:2026,STAT_BASIS:'season_total',GP:82,FGM:1,FGA:2,FTM:1,FTA:2})):[],adp:phase==='adp'?[{YAHOO_ID:String(page),PLAYER:'Synthetic',ADP_AVG:page+1.5}]:[]})};
+ const context={document:doc,location:loc,chrome,NBAParser:parser,NBACollector:{nextPage,filterChange},setInterval:fn=>{tick=fn;return 1;},clearInterval:()=>done=true,URL,Event:class{}};
+ const run=()=>vm.runInNewContext(fs.readFileSync(require.resolve('../browser-extension/collector-page.js'),'utf8'),context);
+ await run();await new Promise(r=>setTimeout(r,0));assert.equal(page,2);assert.equal(state.players.length,25);
+ await run();await new Promise(r=>setTimeout(r,0));assert.equal(phase,'adp');assert.equal(state.players.length,50);assert.equal(state.collection.status,'complete');
+ await run();await new Promise(r=>setTimeout(r,0));assert.equal(page,2);await tick();assert.equal(state.adp_collection.status,'complete');assert.equal(state.adp.length,2);assert.equal(state.players.length,50);assert.ok(done);
 });
 process.stdout.write(tests+' JavaScript checks passed (mock Chrome API)\n');
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -1,20 +1,5 @@
-# Yahoo browser bridge 0.2.4
+# Yahoo browser bridge 0.3.0
 
-Mock-room picks/clock/owner identity cannot be overwritten by ordinary league Results pages. Stats/ADP from normal player pages remain usable. Live captures mark their room even on Players. Previous rooms are archived before activating another room, and mismatched cached rooms are not sent to Helper. The Results shortcut in a mock connection asks you to use Results → Round by Round in the existing draft tab; it does not open the real league's results. Post-update actual-room validation is still needed.
+Use the existing extension directory and reload it without deleting its storage. Refresh Yahoo and Helper once. Click Connect in the popup. The ordinary collector tab reads all displayed projection pages followed by public ADP pages. It never opens a draft client. Keep it open until complete. The existing single draft tab automatically observes the results view during input-idle periods and restores the prior tab. No drafting or queue controls are clicked. If the live DOM does not match, a missing/stale-data gate stops recommendations instead of guessing.
 
-Later-round visible clocks support both overall and within-round Pick numbering, checked against the displayed Round. Missing live clocks clear the stored current pick and pause recommendations rather than reusing a first-round value. The single-client correction below remains in force.
-
-Load this folder unpacked in Chrome/Edge developer mode. Only `storage` permission and content scripts on Yahoo basketball/Helper component pages are used. No cookies, credentials, Yahoo API, hidden endpoints or automated player selections.
-
-
-Stats and ADP are read only when displayed. Normal Players → Remaining Games (proj) supplies current-season totals with shot volumes; paginate for coverage. These verified volumes are retained when a live draft table supplies percentages only. Past-season statistics are blocked by Helper. Unknown units pause evaluation; missing FG/FT volume disables those categories. Incomplete results pause recommendations. Records survive refresh in extension storage, and Helper caches the last connected state and verified file in same-origin browser localStorage. Back up before clearing browser data.
-
-
-## 0.2.2: Yahoo single-client correction
-
-Actual user testing showed Yahoo disconnects an existing draft client when the extension opens a duplicate. The observer-tab design failed and has been removed. The worker never duplicates, opens, activates or closes a draft tab, including when old auto_monitor settings remain. Close redundant draft tabs yourself and reload the one remaining draft after updating/reloading the extension.
-
-Capture is now passive in one draft client: Players supplies statistics/ADP; Results → Round by Round supplies picks when visible. No automatic tab navigation or drafting actions occur. A duplicate-client logout is detected and invalidates freshness while retaining saved picks. Result visibility gaps pause recommendations after 45 seconds.
-
-IMPORTANT: This is a safe interim correction, not completion of the original hands-off goal. Continuous full-history capture while the user stays on Players remains unresolved. The user screenshot confirms extension-to-hosted-Helper ACK revision 10, but that alone does not validate real pick/recommendation synchronization. Actual post-update single-client draft testing is still required.
-
+Live unattended use must be verified after update in an actual mock draft; fixtures are not evidence of Chrome installation or production reliability. Missing statistics and unavailable ADP are never estimated. Persistent Chrome storage, same-browser Helper storage and JSON backups remain in use.

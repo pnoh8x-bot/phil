@@ -204,3 +204,13 @@ def test_different_round_one_two_pairs_select_different_best_punts():
     a=punt_strategies(m,['1','2'])[0];b=punt_strategies(m,['3','4'])[0]
     assert set(a['punt'])=={'PTS','REB'} and abs(a['score']-.5)<1e-12
     assert set(b['punt'])=={'AST','STL'}
+
+def test_completed_status_needs_full_observed_capacity_and_never_recommends():
+    b=snapshot(500);b['draft_status']='complete';b['roster_capacity']=13
+    state=derive_state(b,'123',2026,'9')
+    assert not state['completed'] and not state['ready']
+    assert 'incomplete_final_history' in {p['code'] for p in state['pause_reasons']}
+    b['picks']=[dict(pick=i,player_id=str(i),player='Synthetic',team='__OUR_TEAM__' if i==3 else 'Other') for i in range(1,157)]
+    b['current_pick']=157
+    state=derive_state(b,'123',2026,'9')
+    assert state['completed'] and not state['ready'] and len(state['drafted'])==156

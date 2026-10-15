@@ -2,7 +2,7 @@
 (function(root){
  const text=e=>(e?.textContent||'').trim().replace(/\s+/g,' ');
  const number=s=>{if(typeof s!=='string')return null;if(s.includes(',')){if(!/^[-+]?\d{1,3}(,\d{3})+(\.\d+)?%?$/.test(s))return null;s=s.replace(/,/g,'');}return /^[-+]?\d*\.?\d+%?$/.test(s)?Number(s.replace('%','')):null;};
- const player=row=>{const a=Array.from(row.querySelectorAll('a[href]')).find(a=>/\/nba\/players\/\d+\/?$/.test(new URL(a.href,'https://sports.yahoo.com').pathname));if(a)return {id:a.href.match(/players\/(\d+)/)[1],name:text(a),cell:a.closest('td')};const live=row.querySelector('.ys-player[data-id]');return live?{id:live.getAttribute('data-id'),name:live.querySelector('img')?.getAttribute('title')||text(live.querySelector('span')),cell:live.closest('td')}:null};
+ const player=row=>{const a=Array.from(row.querySelectorAll('a[href]')).find(a=>/\/nba\/players\/\d+\/?$/.test(new URL(a.href,'https://sports.yahoo.com').pathname));if(a)return {id:a.href.match(/players\/(\d+)/)[1],name:text(a),cell:a.closest('td')};const note=row.querySelector('[data-ys-playerid]'),name=row.querySelector('[data-tst="player-name"]');if(note&&name)return {id:note.getAttribute('data-ys-playerid'),name:text(name),cell:note.closest('td')};const live=row.querySelector('.ys-player[data-id]');return live?{id:live.getAttribute('data-id'),name:live.querySelector('img')?.getAttribute('title')||text(live.querySelector('span')),cell:live.closest('td')}:null};
  function parse(doc,url){
   const u=new URL(url), liveMatch=u.pathname.match(/^\/draftclient\/nba\/(\d+)\/(\d+)\/?$/), match=u.pathname.match(/^\/nba\/(\d+)(?:\/|$)/)||liveMatch;if(!match)return null;
   const seasonText=text(doc.querySelector('#yfa-draftresults-select option:checked'));
@@ -11,6 +11,8 @@
   const out={version:1,league_id:match[1],season,historical,source_url:u.origin+u.pathname+(historical?'?draft_results_period=previous':''),captured_at:new Date().toISOString(),picks:[],players:[],adp:[],settings:{},teams:[]};
   if(liveMatch){
    out.live=true;out.room_id=liveMatch[1];out.results_visible=false;
+   if(/\bDraft Complete\b/i.test(text(doc.body)))out.draft_status='complete';
+   const capacity=text(doc.body).match(/Your\s*Team\s*\(\d+\s*\/\s*(\d+)\)/i);if(capacity)out.roster_capacity=Number(capacity[1]);
    if(/You have been logged off because you logged in from another draft client/i.test(text(doc.body))){out.connection_error='Yahoo 중복 드래프트 접속으로 연결이 끊겼습니다. 드래프트 탭 하나만 남기고 새로고침하세요.';return out;}
    const header=text(doc.body),clock=header.match(/Round\s+(\d+)\s*(?:[,•·|:-]\s*)?Pick\s+(\d+)/i);
    if(clock){const r=Number(clock[1]),p=Number(clock[2]);
@@ -43,6 +45,7 @@
     const p=player(row);if(!p)continue;const cells=Array.from(row.children);
     const val=h=>text(cells[headers.indexOf(h)]);
     if(headers.includes('Avg Pick')||(liveMatch&&headers.includes('ADP'))){const n=number(val(liveMatch?'ADP':'Avg Pick'));if(n>0)out.adp.push({YAHOO_ID:p.id,PLAYER:p.name,ADP_AVG:n});}
+    if(u.pathname.endsWith('/draftanalysis')&&headers.includes('All Drafts')){const n=number(val('All Drafts'));if(n>0)out.adp.push({YAHOO_ID:p.id,PLAYER:p.name,ADP_AVG:n});}
     if(headers.includes('PTS') && headers.includes('FG%')){
      const statMode=liveMatch?Array.from(doc.querySelectorAll('select option:checked')).map(x=>text(x)).find(x=>/Stats$/.test(x))||'Live draft displayed stats':text(doc.querySelector('#statselect option:checked'));
      const record={YAHOO_ID:p.id,PLAYER:p.name,STAT_SOURCE:statMode};
@@ -57,6 +60,7 @@
    }
   }
   const scheduled=text(doc.querySelector('.yfa-draft-scheduled')); if(scheduled)out.draft_status=scheduled;
+  if(out.live&&out.draft_status==='complete'&&out.results_visible&&out.picks.length){const seen=new Set(out.picks.map(p=>p.pick)),max=Math.max(...seen);if(seen.size===max){out.current_pick=max+1;out.current_pick_at=out.captured_at;out.current_pick_source='completed_result_history';}}
   return out;
  }
  root.NBAParser={parse};if(typeof module!=='undefined')module.exports=root.NBAParser;

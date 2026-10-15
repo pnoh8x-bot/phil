@@ -42,7 +42,7 @@ def test_ui_discloses_missing_shot_volumes_and_seven_category_mode():
 
 def test_ui_unknown_roster_identity_blocks_cards():
     at=run_ui(missing_own=True)
-    assert any('Roster IDs missing' in x.value for x in at.error)
+    assert any('내 선수 통계 수집 대기' in x.value for x in at.warning)
     assert not any('Yahoo ID' in x.value for x in at.markdown)
 
 def test_ui_empty_connection_never_shows_recommendations():
@@ -84,4 +84,25 @@ def test_room_bound_component_allows_only_matching_mock_history():
         assert not at.exception
         assert any('Yahoo ID' in x.value for x in at.markdown)==valid
         if not valid:assert any('연결된 모크 방의 결과가 아닙니다' in x.value for x in at.error)
+
+def test_automatic_collection_gates_cards_until_complete_then_recommends_without_input():
+    for status,expected in [('collecting',False),('complete',True)]:
+        raw=snapshot();raw['revision']=30;raw['collection']={'status':status,'page':2,'players':12}
+        b=fixture();b['ADP_RANK']=1;raw['board']=b.to_dict('records')
+        packet={'config':{'league_id':'123','team_id':'9','season':2026,'auto_collect':True},'snapshot':raw}
+        with patch('streamlit.components.v1.declare_component',return_value=lambda **kw:packet):
+            at=AppTest.from_file(str(Path(__file__).parents[1]/'app.py')).run()
+        assert not at.exception
+        assert any('Yahoo ID' in x.value for x in at.markdown)==expected
+        assert any('전체 통계 자동 수집' in x.value for x in at.caption)
+
+def test_completed_draft_retains_roster_and_never_recommends_another_player():
+    raw=snapshot(age=500);raw['revision']=31;raw['draft_status']='complete'
+    b=fixture();b['ADP_RANK']=1;raw['board']=b.to_dict('records')
+    packet={'config':{'league_id':'123','team_id':'9','season':2026},'snapshot':raw}
+    with patch('streamlit.components.v1.declare_component',return_value=lambda **kw:packet):
+        at=AppTest.from_file(str(Path(__file__).parents[1]/'app.py')).run()
+    assert not at.exception
+    assert any('드래프트 종료' in x.value for x in at.success)
+    assert not any('Yahoo ID' in x.value for x in at.markdown)
 

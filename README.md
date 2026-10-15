@@ -1,14 +1,15 @@
 # NBA Draft Helper
 
-0.2.4 isolates mock-room draft identity from ordinary league pages. Live clocks/ownership are marked on every live capture, not only a Results capture. An empty real-league Draft Results page cannot erase a mock's picks or freshness. Changing rooms clears only the active draft state and archives the prior room in extension storage; general player statistics/ADP may still enrich the board. Cached packets from another room are not published or accepted by the bound Helper. A mock connection's Results shortcut directs the user to the existing mock tab instead of opening a real-league results page. Actual post-update mock testing is still required.
+Version 0.3.0 adds a single ordinary-page collector that selects All Players and Remaining Games (proj), follows observed next-page links, persists the full displayed pool, then collects publicly displayed Basic ADP pages. No Yahoo API requests, cookie reads, duplicate draft clients or draft actions are used. The existing draft tab observes Results during idle intervals and restores its previous view. Mouse/keyboard activity pauses view changes. Missing or stale data still blocks recommendations. Collection progress, missing owned players and completed-draft state are explicit.
 
-0.2.3 fixes later-round clock parsing: `Round 2, Pick 18` (overall) and `Round 2, Pick 6` (within round) both map to overall 18 in this 12-team model. Inconsistent round/pick combinations are rejected. Missing live clocks invalidate the stored current pick and pause recommendations; no historical first-round clock is reused and partial records never establish the live current pick.
+Actual installed-Chrome end-to-end validation remains required; passing fixtures and sampled real HTML do not certify unattended production operation. 
+
 
 12-team H2H 9CAT snake draft assistant. Yahoo API access is not required. Draft actions remain in Yahoo.
 
 ## Implemented
 
-- Chrome/Edge MV3 extension reads visible Yahoo tables and player IDs. A service worker serializes observations into league/season-scoped `chrome.storage.local`, retaining a previous snapshot. Complete results can replace history (including undo); partial/virtualized observations cannot erase history and pause recommendations.
+- Chrome/Edge MV3 extension reads visible Yahoo tables and player IDs. A service worker serializes observations into league/season-scoped `chrome.storage.local`, retaining a previous snapshot. Complete results can replace history (including undo); partial/virtualized observations merge by pick number and can only pass when the merged sequence matches the observed live clock without duplicate IDs.
 - Extension → Streamlit iframe transport with revision ACK shown in the extension popup. Receiving a message is distinguished from observing Yahoo and from validating recommendation inputs.
 - Exact canonical Yahoo ID exclusions, roster ownership and snake-slot inference. No name fallback in the recommendation engine. Stale (>45s), incomplete, conflicting, wrong-season and wrong-league observations stop recommendations. Team IDs are never treated as draft slots.
 - Population Z-scores (ddof=0), lower-is-better TO, and volume-weighted FG/FT impact (`made − population_rate × attempts`). Season totals normalize by positive GP. Unknown/mixed units, invalid numbers and duplicate IDs are rejected. Missing statistics remain missing.
@@ -22,8 +23,8 @@
 
 1. Download `browser-extension.zip`, unpack, enable developer mode at `chrome://extensions`, and load the unpacked folder. Update/reload an older extension installation.
 2. In the extension enter your Yahoo team URL. For mock rooms also enter the room URL; only its numeric room ID is retained, never auth query strings.
-3. Open one Yahoo draft tab and the deployed Helper in the **same Chrome/Edge profile**. Reload both tabs and connect. Show Results → Round by Round in that same draft tab to collect picks. Do not open a second draft client. Keep the device awake; browser background throttling/disconnection can pause recommendations.
-4. View the Yahoo player/stat table (and paginate/scroll for coverage) or upload a verified current-season board. In the normal Players screen choose **Remaining Games (proj)** for current-season totals with FGM/FGA/FTM/FTA; those volumes were verified on 25 actual displayed rows. Extension 0.2.2 retains this source when a live table later supplies percentages only. Live-only projections support seven categories. Browser-visible subsets are explicitly labeled as the evaluation population; a complete NBA player universe is not assumed. Missing/zero-GP rows cannot normalize and are disclosed/excluded, never filled. Past-season browser statistics are blocked, not relabeled as current forecasts.
+3. Open one Yahoo draft tab and the deployed Helper in the **same Chrome/Edge profile**. Reload both tabs and connect. During idle input periods the same draft tab briefly observes Results → Round by Round and restores the prior view. Do not open a second draft client. Keep the device awake; browser background throttling/disconnection can pause recommendations.
+4. Click Connect in extension 0.3. The ordinary collection tab automatically selects All Players and Remaining Games (proj), walks every displayed statistics page, then reads publicly displayed Basic All Drafts ADP pages. Keep this tab open. It never creates a draft client. The Helper shows collection progress; browser-based automatic mode waits for complete 9CAT collection. Missing/zero GP rows remain missing and are excluded; absent ADP is reported, never replaced by Yahoo rank.
 5. Confirm `Helper 수신 확인 버전` in the extension and the matching receipt in the app. Run a mock draft and verify a real pick, undo, own roster, refresh recovery and stale pause before relying on this on draft day.
 
 No repeated manual draft/roster entry is required after setup. Full hands-off behavior remains conditional on actual Yahoo room/Chrome integration validation.
@@ -61,11 +62,7 @@ Existing deployment: https://nba-draft-helper.onrender.com/ . No new paid servic
 
 Never commit Yahoo auth links, credentials, private league snapshots or browser backups. The public repository contains code and clearly synthetic test fixtures only.
 
-## 0.2.2: Yahoo single-client correction
 
-Actual user testing showed Yahoo disconnects an existing draft client when the extension opens a duplicate. The observer-tab design failed and has been removed. The worker never duplicates, opens, activates or closes a draft tab, including when old auto_monitor settings remain. Close redundant draft tabs yourself and reload the one remaining draft after updating/reloading the extension.
+## Validation for 0.3.0
 
-Capture is now passive in one draft client: Players supplies statistics/ADP; Results → Round by Round supplies picks when visible. No automatic tab navigation or drafting actions occur. A duplicate-client logout is detected and invalidates freshness while retaining saved picks. Result visibility gaps pause recommendations after 45 seconds.
-
-IMPORTANT: This is a safe interim correction, not completion of the original hands-off goal. Continuous full-history capture while the user stays on Players remains unresolved. The user screenshot confirms extension-to-hosted-Helper ACK revision 10, but that alone does not validate real pick/recommendation synchronization. Actual post-update single-client draft testing is still required.
-
+52 Python tests; 24 JavaScript checks with mock Chrome APIs; 16 browser DOM parser checks. Two actual displayed Yahoo projection pages (50 unique player IDs) and one public ADP page (30 IDs) passed 10 HTML reconstruction/parser/merge checks, and the Python evaluator processed the 50 observed rows across all 9 categories. These are sampled source checks, not proof of a full pool or live Chrome draft. The 0.3.0 extension still needs one actual installed-Chrome mock draft to verify automatic UI switching, background timing and complete end-to-end recommendations. Multi-hour reliability and the prior Render 502 root cause remain unverified. No production NBA projections or private league snapshots are bundled.

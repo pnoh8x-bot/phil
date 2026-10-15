@@ -1,5 +1,5 @@
 """Browser-observed, file-grounded 12-team H2H draft assistant."""
-import json,re
+import json,re,hashlib
 from datetime import datetime
 from pathlib import Path
 import pandas as pd
@@ -16,7 +16,7 @@ st.caption('12팀 H2H · 9CAT · 스네이크 · Yahoo 화면 자동 동기화')
 bridge=components.declare_component('yahoo_browser_bridge',path=str(Path(__file__).parent/'browser_bridge'))
 cfg=st.session_state.get('config',{})
 with st.expander('브라우저 연결 · 최초 설정',expanded=not bool(cfg)):
-    st.write('확장을 설치한 같은 Chrome/Edge에서 Yahoo와 이 앱을 열어두세요. 지명은 Yahoo에서 직접 합니다. 드래프트 탭은 하나만 유지하고 Results → Round by Round가 표시될 때 결과를 수집합니다.')
+    st.write('확장 0.3에서 연결을 시작하면 전체 선수 통계·공개 ADP를 전용 일반 탭 하나에서 자동 수집합니다. 드래프트 방은 하나만 유지하세요. 사용자가 조작하지 않는 동안 같은 방의 결과 화면을 읽고 원래 화면으로 돌아갑니다. 지명은 Yahoo에서 직접 합니다.')
     ext=Path(__file__).parent/'browser-extension.zip'
     if ext.exists():st.download_button('확장 프로그램 다운로드',ext.read_bytes(),file_name='nba-yahoo-sync.zip')
     st.caption('압축 해제 → chrome://extensions → 개발자 모드 → 압축해제된 확장 로드 → 확장에 팀 주소 입력 → Yahoo와 Helper 새로고침. 모의 방은 방 주소도 입력하세요.')
@@ -81,6 +81,11 @@ def dashboard():
         if raw.get('connection_error'):
             st.error(raw['connection_error']);return
         age=state['age_seconds'];st.caption('결과 표 수신: '+(f'{max(0,int(age))}초 전' if age is not None else '미확인'))
+        collection=raw.get('collection',{});adp_collection=raw.get('adp_collection',{})
+        if collection:
+            st.caption(f"전체 통계 자동 수집: {collection.get('status','대기')} · {collection.get('page',0)}페이지 · {collection.get('players',0)}명 / 공개 ADP: {adp_collection.get('status','대기')} · {adp_collection.get('players',0)}명")
+            if collection.get('error'):st.warning('자동 수집 오류: '+collection['error']+' · 확장의 전체 통계 다시 수집을 눌러 재시도하세요.')
+        if raw.get('monitor',{}).get('reason'):st.caption('자동 결과 관찰: '+raw['monitor']['reason'])
         if not state['ready']:
             st.warning('추천 일시 중지 · 아래 미확인 항목이 해결되면 자동으로 다시 계산합니다.')
             for reason in state['pause_reasons']:st.write('• '+reason['message'])
@@ -95,7 +100,11 @@ def dashboard():
         prior_source=any(re.search(r'20\d{2}',src) and int(re.search(r'20\d{2}',src)[0])!=int(c['season']) for src in sources)
         if not rows and (prior_source or 'STAT_SEASON' in board and (pd.to_numeric(board.STAT_SEASON,errors='coerce')!=int(c['season'])).any()):
             st.error('통계 시즌이 연결 시즌과 다릅니다. Yahoo 통계 선택을 현재 시즌으로 바꾸세요. 지난 시즌 수치를 현재 예측으로 사용하지 않습니다.');return
-        model=evaluate_board(board,st.session_state.get('board_basis'))
+        signature=hashlib.sha256((board.to_json(orient='records')+str(st.session_state.get('board_basis'))).encode()).hexdigest()
+        cached=st.session_state.get('evaluation_cache')
+        if not cached or cached[0]!=signature:
+            st.session_state.evaluation_cache=(signature,evaluate_board(board,st.session_state.get('board_basis')))
+        model=st.session_state.evaluation_cache[1]
         st.caption(f"평가 모집단: 수집/파일 선수 {model.population}명 · 평가 가능 {len(model.categories)}/9 카테고리 · 전체 NBA 선수 수집을 보장하지 않습니다.")
         if model.unavailable:
             descriptions={k:('슛 성공·시도 수가 없어 평가 불가' if k in ('FG%','FT%') and 'volume missing' in v else v) for k,v in model.unavailable.items()}
@@ -103,6 +112,10 @@ def dashboard():
             if any('volume missing' in v for v in model.unavailable.values()):
                 st.caption('9CAT 전체 평가에는 Yahoo 일반 Players 화면의 Stats → Remaining Games (proj)에서 FGM/A·FTM/A를 수집하거나 검증된 통계 파일을 연결하세요. 드래프트 방을 복제하지 않고 일반 선수 목록을 이용합니다.')
         if model.normalization_unavailable:st.warning('GP가 0이거나 없어 경기당 통계를 계산할 수 없는 선수는 추천에서 제외합니다. Yahoo ID: '+', '.join(model.normalization_unavailable))
+        missing_own=set(state['ours'])-set(model.board.index)
+        if missing_own:
+            names=[p['player']+' (ID '+p['player_id']+')' for p in state['snapshot']['picks'] if p['player_id'] in missing_own]
+            st.warning('내 선수 통계 수집 대기: '+', '.join(names)+' · 전체 통계 수집이 끝나면 자동으로 다시 계산합니다.');return
         profile=roster_profile(model,state['ours'])
         st.subheader('내 로스터 · 누적 카테고리')
         owned=model.board.loc[state['ours']];st.write(', '.join(owned.PLAYER) if len(owned) else '아직 지명한 선수 없음')
@@ -116,6 +129,10 @@ def dashboard():
             st.write(('1명 기준 잠정 전략: ' if strategies[0]['provisional'] else '1–2라운드 조합의 모델 내 최상위 전략: ')+(', '.join(punts) or '균형 유지'))
             st.dataframe(pd.DataFrame([{'펀트':', '.join(p['punt']) or '없음','평가점수':p['score'],'유지':', '.join(p['retained'])} for p in strategies[:5]]),hide_index=True)
         else:st.caption('초반 지명 조합과 검증된 통계가 모이면 계산합니다.')
+        if state.get('completed'):
+            st.success('드래프트 종료 · 최종 로스터와 카테고리 평가를 유지합니다. 다음 선수 추천은 종료했습니다.');return
+        if not rows and c.get('auto_collect') and (collection.get('status')!='complete' or len(model.categories)!=9):
+            st.info('전체 선수의 9CAT 통계 수집을 완료한 뒤 추천을 시작합니다. 전용 Yahoo 통계 탭을 닫지 마세요.');return
         if not state['ready']:
             return
         recs=recommend(model,state['ours'],state['drafted'],state['current'],state['slot'],punts)
