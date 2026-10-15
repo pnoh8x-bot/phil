@@ -1,18 +1,9 @@
-# Yahoo Browser Sync (preview)
+# Yahoo browser bridge 0.2.0
 
-Yahoo API 신청 없이 로그인된 Yahoo 농구 웹페이지에 표시된 표를 읽습니다.
+Load this folder unpacked in Chrome/Edge developer mode. Only `storage` permission and content scripts on Yahoo basketball/Helper component pages are used. No cookies, credentials, Yahoo API, hidden endpoints or automated player selections.
 
-1. 이 폴더를 내려받아 압축을 해제합니다.
-2. Chrome의 chrome://extensions 또는 Edge의 edge://extensions 에서 개발자 모드를 켜고 '압축해제된 확장 프로그램 로드'로 이 폴더를 선택합니다.
-3. 확장 아이콘을 눌러 Yahoo 팀 주소를 입력하고 '연결 시작'을 누릅니다.
-4. Yahoo 및 NBA Draft Helper 탭을 새로고침합니다. Helper에서도 같은 팀 주소와 시즌을 입력하고 '이 리그 연결'을 누릅니다.
-5. 확장의 선수 통계/ADP 버튼으로 페이지를 열고 원하는 통계 기간을 선택합니다. 읽은 페이지의 선수만 수집됩니다. 다음 페이지로 이동하면 추가됩니다. 업로드한 DraftBoard가 있으면 그 파일이 우선합니다.
-6. 드래프트 방에서 Players 화면을 열면 화면에 표시된 예측 통계와 ADP가 함께 수집됩니다. 이후 Results → Round by Round를 열어두면 지명 기록이 자동 반영됩니다. 다른 화면으로 바꾸면 지명 수신 시간이 멈춘 것으로 표시됩니다. 선수 목록은 화면에 렌더링된 범위만 읽으므로 필요한 범위까지 스크롤하세요. 확장 설치 후 실제 전송·지명 지연 테스트가 필요합니다.
-7. 모의 드래프트는 실제 리그와 방 번호가 다릅니다. 확장 팝업의 드래프트 방 주소에 주소창의 /draftclient/nba/방번호/팀번호 부분을 입력하세요. auth 등 물음표 뒤 값은 보관하거나 전송하지 않습니다. 모의 기록이 실리그로 섞이지 않도록 명시적으로 지정한 방만 읽습니다.
-8. 일반 Draft Results 페이지를 사용하는 경우에는 드래프트 시작 후 15초마다 갱신합니다. Yahoo가 이 페이지를 지연 갱신하면 Helper도 지연됩니다. 라이브 방의 화면 구조는 무료 모의 드래프트에서 확인했지만 실제 리그와 브라우저 확장 전체 연결은 아직 검증되지 않았습니다.
+Enter your team URL in the popup. A mock room needs its room URL too; the auth query is discarded. Reload Yahoo and Helper after installing/updating. Leave the automatically duplicated Results observer tab open. The original tab remains available for player stats and drafting. Confirm the Helper receipt revision in both app and popup.
 
-## 범위와 데이터
+Stats and ADP are read only when displayed. Unknown units pause evaluation; missing FG/FT volume disables those categories. Incomplete results pause recommendations. Records survive refresh in extension storage, and Helper caches the last connected state and verified file in same-origin browser localStorage. Back up before clearing browser data.
 
-현재 시즌의 Round 결과 표, 선수 ID, 화면 통계, Avg Pick, 팀 목록, 리그 설정만 읽습니다. 지난 시즌 지명 결과는 제외합니다. Yahoo 비밀번호·쿠키·인증 토큰·이메일·채팅은 읽거나 저장하지 않습니다. 선수 통계와 ADP 및 지명 결과는 브라우저 로컬 저장소에 저장되고, 연결한 Helper 페이지를 통해 Render 앱 세션으로 전달됩니다. 앱 서버에서 영구 저장하지 않습니다. 확장 '중지' 버튼으로 읽기를 중지할 수 있고 확장을 제거하면 로컬 저장소가 지워집니다.
-
-API 네트워크 요청, 자동 지명, 리그 설정 변경, 유료 가입을 하지 않습니다. Yahoo 로그인과 브라우저가 필요하며 화면 구조 변경·가상화·페이지 지연에 영향을 받습니다. 시즌/리그가 다른 결과는 섞지 않습니다. 순번은 팀 ID가 아닙니다. 드래프트 시작 30분 전 Yahoo에서 확정된 실제 순번을 확인하세요.
+Actual simultaneous Yahoo draft-tab compatibility and real installed-extension delivery to Render still require a Chrome mock-draft test. Local mocks/DOM fixtures passing do not prove that integration.

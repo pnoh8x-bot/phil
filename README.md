@@ -1,53 +1,60 @@
-# NBA Fantasy Draft Helper — Cloud MVP
+# NBA Draft Helper
 
-A Python + Streamlit prototype for 12-team H2H 9-category snake draft planning.
+12-team H2H 9CAT snake draft assistant. Yahoo API access is not required. Draft actions remain in Yahoo.
 
-## Current status
-- Uploaded verified XLSX/CSV DraftBoard is the only player-data source.
-- Calculates snake-draft pick numbers and displays ADP-based candidates.
-- Tracks manually selected players and computes projected counting-stat totals.
-- Team FG% / FT% are computed only when FGM/FGA and FTM/FTA exist.
-- Yahoo OAuth, real-time draft synchronization, automatic player entry, persistent cloud state, and dynamic punt optimizer **are not implemented**.
-- ADP proximity is not confirmation that a player is undrafted.
+## Implemented
 
-## Local run
-```bash
-python -m pip install -r requirements.txt
+- Chrome/Edge MV3 extension reads visible Yahoo tables and player IDs. A service worker serializes observations into league/season-scoped `chrome.storage.local`, retaining a previous snapshot. Complete results can replace history (including undo); partial/virtualized observations cannot erase history and pause recommendations.
+- In live rooms a duplicated Yahoo tab is dedicated to Results → Round by Round; the original tab stays available for drafting. The observer clicks navigation tabs only. Whether Yahoo permits both draft connections concurrently **still needs actual Chrome testing**.
+- Extension → Streamlit iframe transport with revision ACK shown in the extension popup. Receiving a message is distinguished from observing Yahoo and from validating recommendation inputs.
+- Exact canonical Yahoo ID exclusions, roster ownership and snake-slot inference. No name fallback in the recommendation engine. Stale (>45s), incomplete, conflicting, wrong-season and wrong-league observations stop recommendations. Team IDs are never treated as draft slots.
+- Population Z-scores (ddof=0), lower-is-better TO, and volume-weighted FG/FT impact (`made − population_rate × attempts`). Season totals normalize by positive GP. Unknown/mixed units, invalid numbers and duplicate IDs are rejected. Missing statistics remain missing.
+- Punt search across no punt, one punt and two punts, keeping at least five observed categories. Only actual round 1–2 selections anchor the strategy. A single anchor is provisional. Score = mean retained anchor Z minus 0.25 per punt; this optimizes that declared heuristic, not a measured league win probability.
+- Unique Must Pick 2 and Backup 2, or fewer if insufficient verified candidates. Roster weakness weights, protection of up to three retained strengths, and two-pick utility use the next two own snake picks. The second-step pool uses observed ADP ≥ next own pick; absent future data adds no bonus. ADP is not a survival probability.
+- Player ADP, boosted categories, strengths to protect, damage to strengths and ADP-based waiting explanation. No invented probabilities or fake NBA projections.
+- Cumulative per-game counting categories, shot-weighted team percentages, category Z sums and strengths/weaknesses.
+- Same-browser persistent state: extension local storage plus iframe localStorage, including an uploaded verified board. Survives app refresh, session loss and Render restart. Download/restore JSON backup. This is **not** an authenticated multi-device database; clearing browser storage removes it. No global server cache of private leagues.
+
+## First setup
+
+1. Download `browser-extension.zip`, unpack, enable developer mode at `chrome://extensions`, and load the unpacked folder. Update/reload an older extension installation.
+2. In the extension enter your Yahoo team URL. For mock rooms also enter the room URL; only its numeric room ID is retained, never auth query strings.
+3. Open Yahoo and the deployed Helper in the **same Chrome/Edge profile**. Reload both tabs, connect, and leave the results observer tab open. Keep the device awake; browser background throttling/disconnection can pause recommendations.
+4. View the Yahoo player/stat table once (and scroll if virtualized) or upload a verified current-season board. Browser-visible subsets are explicitly labeled as the evaluation population. A complete NBA player universe is not assumed. Live Yahoo projections observed so far have percentages but no shot volumes: they support seven categories, **not complete nine-category evaluation**, until verified FGM/FGA/FTM/FTA are supplied.
+5. Confirm `Helper 수신 확인 버전` in the extension and the matching receipt in the app. Run a mock draft and verify a real pick, undo, own roster, refresh recovery and stale pause before relying on this on draft day.
+
+No repeated manual draft/roster entry is required after setup. Full hands-off behavior remains conditional on actual Yahoo room/Chrome integration validation.
+
+## Verified file contract
+
+CSV UTF-8 or XLSX (`DraftBoard` sheet preferred). Existing required columns remain:
+`PLAYER, ADP_RANK, PTS, REB, AST, STL, BLK, 3PM, FG%, FT%, TO`.
+
+For automatic recommendations also provide `YAHOO_ID` and `STAT_BASIS` (`per_game` or `season_total`). Add `GP` for season totals; `FGM,FGA,FTM,FTA` for weighted efficiency. `ADP_AVG` is preferred when present. A file's `ADP_RANK` may be used only when it is the verified ADP source; browser-generated display order never replaces missing Yahoo Avg Pick. Percentages in files may be fractions or 0–100 percentages. Invalid rows are rejected, not silently dropped. No external statistics or simulated projections are bundled as production data.
+
+## Run and test
+
+```sh
+python -m pip install -r requirements-dev.txt
+python -m pytest tests -q
+node tests/test_extension.cjs
+python package_extension.py
 streamlit run app.py
 ```
 
-## Tests
-```bash
-pip install pytest
-pytest -q
-```
+Python tests cover formulas, IDs, data validation, snake boundaries, punts, recommendations, freshness and Streamlit UI. JS tests execute production reducer, transport and worker with a **mock Chrome API**. All arithmetic fixtures are explicitly synthetic, not usable NBA projections.
 
-## Render deployment
-1. Connect this GitHub repository to Render.
-2. Use Render Blueprint with `render.yaml` (starter paid plan).
-3. Deploy and verify the health check.
-4. Do not upload Yahoo passwords or OAuth tokens to GitHub.
+For DOM/browser integration serve this directory (`python -m http.server 8766`), then open:
 
-## Security
-This repository is currently public. Do not commit credentials, private Yahoo drafts, or sensitive league data. Access control is required before using personal league data on a publicly accessible deployment.
+- `/tests/parser-fixture.html`: automatic DOM parser assertions including auth-query stripping and live snake clock.
+- `/tests/bridge-fixture.html`: production transport/iframe with simulated Chrome storage. Send synthetic capture → verify app receipt/ACK → reload iframe with transport source removed → confirm cached recovery → switch league → confirm isolation. Uses localhost fixture storage only.
 
-## Roadmap
-1. Confirm Yahoo Fantasy API permissions and actual in-progress draft data access.
-2. Add secure Yahoo OAuth, event polling/webhook as supported, and manual sync fallback.
-3. Persistent database + authentication.
-4. Punt-adjusted 9CAT z-scores, ADP opportunity cost and next-pick-aware recommendations.
-5. Real draft-day testing before relying on live recommendations.
+These tests do not substitute for actual installed-extension → Yahoo → hosted Render testing.
 
+## Deployment and validation boundary
 
-## API-free Yahoo browser sync (preview)
+Existing deployment: https://nba-draft-helper.onrender.com/ . No new paid service is required for browser persistence. Keep existing Render service settings; repository `render.yaml` is not reapplied automatically.
 
-The optional Chrome/Edge extension in `browser-extension/` reads rendered Yahoo basketball tables. It does not call the Yahoo API, read cookies, save passwords, or submit draft picks. Download `browser-extension.zip` from the app and follow `browser-extension/README.md`.
+At implementation time: Python/worker/transport/browser fixtures are tested. Real Chrome extension installation, simultaneous Yahoo draft connections, live league 30375 picks, full real-data nine-category coverage and multi-hour draft reliability remain unverified. Do not describe the system as fully live-validated until those checks pass.
 
-Supported sources: current-season round Draft Results tables, displayed player statistics, displayed Avg Pick, league settings and team labels. Historical results are rejected. Draft Results is reloaded every 15 seconds after the scheduled-draft notice disappears; this is not a promise of real-time Yahoo publishing. Live draft-room DOM support has not been field-tested. Keep the extension and Yahoo/Helper tabs open. Only visited player/ADP pages are collected, so an uploaded verified DraftBoard remains the most complete source. No private league/account data is committed to this repository.
-
-Run Python checks: `python tests/run_checks.py`. Browser parser fixtures: serve the repository locally and open `tests/parser-fixture.html`. Six Python checks and five browser fixture checks cover wrong season/league, duplicate/missing picks, identity matching, within-round numbering and ADP provenance. Actual in-draft latency and Chrome extension installation remain to be verified on the user's browser.
-
-
-### Live draft-room DOM adapter
-
-The Yahoo live draft room layout was inspected in a free mock draft. The adapter supports displayed `.ys-player[data-id]` identity, visible ADP/projection columns and Results > Round by Round overall-pick rows. Keep the Results view open for pick updates; switching views stops results capture and the Helper shows a stale-data warning. Mock rooms require explicit room binding so a mock draft cannot silently overwrite the real league. Source URLs exclude auth query parameters. Eight browser parser fixture checks pass; full Chrome/Edge extension installation and live production-league transfer are still pending user setup. This is a browser-sync preview, not a verified zero-latency draft feed.
+Never commit Yahoo auth links, credentials, private league snapshots or browser backups. The public repository contains code and clearly synthetic test fixtures only.

@@ -1,0 +1,24 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Bridge integration fixture — simulated Chrome storage</title>
+<h1>Bridge integration — synthetic fixture</h1><p>This page tests production transport.js and the production bridge iframe. Chrome storage is simulated. No Yahoo or Render end-to-end claim.</p>
+<button id="capture">Send synthetic capture</button><button id="reload">Reload iframe</button><button id="switch">Switch league</button><button id="reset">Reset fixture only</button>
+<pre id="checks"></pre><iframe id="bridge" src="../browser_bridge/index.html" style="width:700px;height:150px;border:1px solid #ccc"></iframe>
+<script>
+let args={league_id:'123',team_id:'9',season:2026},latest=null,revision=0;const checks=[];
+const data={nbaConfig:{enabled:true,league_id:'123',team_id:'9',season:2026}},listeners=[];
+const storage={get:async k=>({[k]:data[k]}),set:async c=>{Object.assign(data,c);for(const fn of listeners)fn(c)},onChanged:{addListener:f=>listeners.push(f)}};
+const frame=document.getElementById('bridge');function note(s){checks.push(s);document.getElementById('checks').textContent=checks.join('\n');}
+function render(){frame.contentWindow.postMessage({type:'streamlit:render',args},location.origin)}
+window.addEventListener('message',e=>{if(e.source!==frame.contentWindow)return;
+ if(e.data?.type==='streamlit:componentReady')render();
+ if(e.data?.type==='streamlit:setComponentValue'){
+  latest=e.data.value;
+  if(latest?.snapshot){args.ack_revision=latest.snapshot.revision;note('APP RECEIVED revision '+args.ack_revision+' picks '+latest.snapshot.picks.length);render();}
+ }
+});
+frame.onload=()=>{listeners.length=0;const s=frame.contentDocument.createElement('script');s.src='../browser-extension/transport.js';s.onload=()=>{frame.contentWindow.NBATransport.bind(storage,frame.contentWindow);render();};frame.contentDocument.body.appendChild(s);note('IFRAME LOADED');};
+document.getElementById('capture').onclick=async()=>{revision++;const v={version:1,league_id:'123',season:2026,revision,picks:[{pick:1,player_id:'1',player:'Synthetic 1',team:'Other'}],captured_at:new Date().toISOString()};await storage.set({'nba:123:2026':v});note('CAPTURE revision '+revision);};
+document.getElementById('reload').onclick=()=>{const expected=latest?.snapshot?.revision;delete data['nba:123:2026'];frame.src='../browser_bridge/index.html?reload='+Date.now();note('RELOAD expected cached revision '+expected+'; transport snapshot removed');};
+document.getElementById('switch').onclick=()=>{args={league_id:'456',team_id:'9',season:2026};latest=null;render();note('SCOPE SWITCH to 456');};
+document.getElementById('reset').onclick=()=>{localStorage.removeItem('nba-helper:durable:v2');location.reload();};
+setInterval(()=>{const ack=data.nbaLastAck;if(ack&&!checks.includes('ACK STORED '+ack.revision))note('ACK STORED '+ack.revision);if(latest?.config?.league_id==='456'&&!latest.snapshot&&!checks.includes('ISOLATION PASS'))note('ISOLATION PASS');},100);
+</script></html>

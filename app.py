@@ -1,93 +1,120 @@
-"""NBA Draft Helper with an opt-in browser-only Yahoo bridge."""
-import json, re
-from datetime import datetime, timezone
+"""Browser-observed, file-grounded 12-team H2H draft assistant."""
+import json,re
+from datetime import datetime
 from pathlib import Path
+import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
-from draft_engine import snake_pick, read_board, candidate_pool, team_totals
-from yahoo_sync import validate_snapshot, browser_board, match_picks
+from draft_engine import read_board
+from yahoo_sync import browser_board
+from draft_state import derive_state
+from recommendations import evaluate_board,roster_profile,punt_strategies,recommend
 
-st.set_page_config(page_title="NBA Draft Helper",layout="wide")
-st.title("NBA Fantasy Draft Helper")
-st.caption("9CAT · Yahoo API 없이 브라우저 화면 연결 · 지명 실행은 Yahoo에서 직접")
-bridge=components.declare_component("yahoo_browser_bridge",path=str(Path(__file__).parent/"browser_bridge"))
-with st.expander("Yahoo 브라우저 연결",expanded=True):
-    st.write("Chrome/Edge 확장 프로그램이 로그인된 Yahoo의 표를 읽어 이 앱에 전달합니다. Yahoo 비밀번호·쿠키는 전송하지 않습니다.")
-    ext=Path(__file__).parent/"browser-extension.zip"
-    if ext.exists(): st.download_button("브라우저 연결 확장 다운로드",ext.read_bytes(),file_name="nba-yahoo-sync.zip")
-    st.caption("압축 해제 → chrome://extensions 또는 edge://extensions → 개발자 모드 → 압축해제된 확장 로드. 확장에서 Yahoo 팀 주소를 입력한 뒤 이 앱과 Yahoo 탭을 새로고침하세요.")
-    st.caption("드래프트 Players 화면에서 통계·ADP를 수집하고 Results → Round by Round를 열어두면 표시된 지명이 반영됩니다. 일반 Draft Results 페이지는 15초마다 갱신됩니다. 확장 설치 후 실제 수신 검증은 필요합니다.")
-    team_url=st.text_input("Yahoo 팀 주소",placeholder="https://basketball.fantasysports.yahoo.com/nba/리그번호/팀번호")
-    match=re.fullmatch(r"https://basketball\.fantasysports\.yahoo\.com/nba/(\d+)/(\d+)/?",team_url.strip())
-    season=st.number_input("연결 시즌 시작 연도",2020,2100,datetime.now().year)
-    raw=bridge(league_id=match[1],season=season,key="yahoo-bridge",default=None) if match else None
-    imported=st.file_uploader("브라우저 연결 파일 가져오기 (선택)",type=["json"])
-    if imported:
-        try: raw=json.loads(imported.getvalue())
-        except (ValueError,UnicodeDecodeError):st.error("올바른 JSON 파일이 아닙니다.")
-snapshot=None
-if raw and match:
-    try:
-        snapshot=validate_snapshot(raw,match[1],season)
-        st.info(f"Yahoo 화면 수신: {snapshot.get('captured_at','')} · 현재 시즌 지명 {len(snapshot['picks'])}개")
-        if snapshot.get("draft_status"):st.write(snapshot["draft_status"])
-    except (ValueError,TypeError) as e:st.error(str(e))
-uploaded=st.file_uploader("DraftBoard (.xlsx 또는 .csv) — 브라우저에서 통계·ADP를 수집했으면 생략 가능",type=["xlsx","csv"])
-board=None
-try:
-    if uploaded:board=read_board(uploaded.getvalue(),uploaded.name)
-    elif snapshot:board=browser_board(snapshot)
-except ValueError as e:st.error(str(e))
-if board is None:
-    st.info("Yahoo 선수 목록의 통계와 Draft Analysis의 Avg Pick을 브라우저 연결로 수집하거나 검증된 DraftBoard를 올려주세요. ADP를 Yahoo 순위로 대체하지 않습니다.")
-    st.stop()
-if not uploaded:
-    sources=sorted(set(board["STAT_SOURCE"].dropna())) if "STAT_SOURCE" in board else []
-    st.caption(f"브라우저에서 읽은 선수 {len(board)}명 · 통계 기준: {', '.join(sources)}. 수집된 선수만 포함됩니다.")
-teams=st.number_input("실제 드래프트 참가 팀 수",2,30,int((snapshot or {}).get("draft_teams") or 12))
-if snapshot and snapshot.get("settings",{}).get("Max Teams"):
-    st.caption("리그 최대 팀 수: "+snapshot["settings"]["Max Teams"]+" · 최대 팀 수와 실제 참가 팀 수는 다를 수 있습니다.")
-slot=st.number_input("내 지명 순번 (팀 ID와 다름)",1,int(teams),value=None,placeholder="Yahoo에서 순서가 정해진 뒤 입력")
-ours=[];others=[]
-auto=snapshot is not None and st.checkbox("Yahoo 결과 표로 지명 현황 반영",value=True)
-if auto:
-    pickteams=sorted({p["team"] for p in snapshot["picks"]})
-    linked={str(t["id"]):t["name"] for t in snapshot.get("teams",[])}
-    teamname='__OUR_TEAM__' if snapshot.get('live') else linked.get(match[2])
-    if not teamname and pickteams:teamname=st.selectbox("결과 표에서 내 팀 선택",pickteams,index=None)
-    if snapshot["picks"] and not teamname:st.warning("내 팀을 확인해야 내 명단을 나눌 수 있습니다.")
-    ours,others,missing=match_picks(board,snapshot["picks"],teamname)
-    if missing:st.warning("DraftBoard에서 찾지 못한 지명 선수: "+", ".join(missing))
-    if snapshot["picks"] and snapshot["complete_pick_sequence"]:
-        overall=max(p["pick"] for p in snapshot["picks"])+1
-        rnd=(overall-1)//int(teams)+1
-        st.write(f"결과 표 기준 다음 전체 지명: {overall} · {rnd}라운드")
-    else:rnd=st.number_input("현재 라운드 (결과 표 미확인)",1,30,1)
-    if not snapshot["complete_pick_sequence"]:st.warning("지명 기록에 공백이 있습니다. 현재 픽을 자동 추정하지 않습니다.")
-    try:
-        age=(datetime.now(timezone.utc)-datetime.fromisoformat(snapshot.get("picks_at","").replace("Z","+00:00"))).total_seconds()
-        if age>45:st.warning("결과 수신이 45초 이상 지났습니다. Yahoo 결과 탭과 확장을 확인하세요.")
-    except (ValueError,TypeError):st.caption("결과 표 수신 시간은 아직 확인되지 않았습니다.")
-    st.write("내 명단:",", ".join(ours) or "아직 확인된 지명 없음")
-else:
-    rnd=st.number_input("현재 라운드",1,30,1)
-    names=board["PLAYER"].tolist()
-    ours=st.multiselect("내 지명 선수",names)
-    others=st.multiselect("다른 팀 지명 선수",[n for n in names if n not in ours])
-window=st.number_input("ADP 후보 범위",0,100,7)
-if slot is not None:
-    pick=snake_pick(int(rnd),int(slot),int(teams))
-    st.markdown(f"### 내 이번 라운드 전체 픽 **{pick}** → 다음 **{snake_pick(int(rnd)+1,int(slot),int(teams))}**")
-    pool=candidate_pool(board,pick,ours,others,window=int(window))
-else:
-    pool=board[~board["PLAYER"].isin(ours+others)].copy()
-    st.info("내 지명 순번이 아직 정해지지 않았습니다. 아래는 수집된 ADP 순서이며 실시간 미지명 보장이 아닙니다.")
-st.subheader("후보 선수 · 출처 ADP 순")
-st.caption("결과 수신 지연·누락이 있으면 이미 지명된 선수가 남아 있을 수 있습니다.")
-view=[c for c in ["PLAYER","TEAM","POS","ADP_AVG","ADP_RANK","Pick_gap","PTS","REB","AST","STL","BLK","3PM","FG%","FT%","TO"] if c in pool]
-st.dataframe(pool[view],hide_index=True,use_container_width=True)
-st.subheader("내 팀 누적 통계 · 원본 데이터 단위")
-if ours:st.json(team_totals(board,ours))
-st.download_button("드래프트 상태 저장",json.dumps({"slot":slot,"teams":teams,"round":int(rnd),"ours":ours,"others":others},ensure_ascii=False,indent=2),file_name="draft-state.json")
-st.caption("Yahoo API 승인 불필요 · 화면 기반 보조 기능 · 자동 지명·펀트 최적화·기기 간 저장은 미구현")
+st.set_page_config(page_title='NBA Draft Helper',layout='wide')
+st.title('NBA Fantasy Draft Helper')
+st.caption('12팀 H2H · 9CAT · 스네이크 · Yahoo 화면 자동 동기화')
+bridge=components.declare_component('yahoo_browser_bridge',path=str(Path(__file__).parent/'browser_bridge'))
+cfg=st.session_state.get('config',{})
+with st.expander('브라우저 연결 · 최초 설정',expanded=not bool(cfg)):
+    st.write('확장을 설치한 같은 Chrome/Edge에서 Yahoo와 이 앱을 열어두세요. 지명은 Yahoo에서 직접 합니다. 확장은 결과 관찰용 탭을 자동으로 열어둡니다.')
+    ext=Path(__file__).parent/'browser-extension.zip'
+    if ext.exists():st.download_button('확장 프로그램 다운로드',ext.read_bytes(),file_name='nba-yahoo-sync.zip')
+    st.caption('압축 해제 → chrome://extensions → 개발자 모드 → 압축해제된 확장 로드 → 확장에 팀 주소 입력 → Yahoo와 Helper 새로고침. 모의 방은 방 주소도 입력하세요.')
+    url=st.text_input('Yahoo 팀 주소',value=cfg.get('team_url',''),placeholder='https://basketball.fantasysports.yahoo.com/nba/30375/9')
+    match=re.fullmatch(r'https://basketball\.fantasysports\.yahoo\.com/nba/(\d+)/(\d+)/?',url.strip())
+    year=st.number_input('시즌 시작 연도',2020,2100,int(cfg.get('season',datetime.now().year)))
+    desired={'league_id':match[1],'team_id':match[2],'season':int(year)} if match else cfg
 
+restore=st.session_state.pop('restore_packet',None)
+if restore:desired=restore['config']
+packet=bridge(league_id=desired.get('league_id'),team_id=desired.get('team_id'),season=desired.get('season'),
+              ack_revision=st.session_state.get('ack_revision'),board_to_save=st.session_state.get('board_override'),
+              board_basis=st.session_state.get('board_basis'),board_scope=cfg,restore_packet=restore,key='yahoo-bridge',default=None)
+if isinstance(packet,dict) and isinstance(packet.get('config'),dict):
+    incoming=packet['config'];scope=(incoming.get('league_id'),incoming.get('season'))
+    if cfg and (scope!=(cfg.get('league_id'),cfg.get('season')) or incoming.get('team_id')!=cfg.get('team_id')):
+        for key in ('board_override','board_basis','snapshot','ack_revision'):st.session_state.pop(key,None)
+    st.session_state.config=incoming
+    if packet.get('snapshot'):st.session_state.snapshot=packet['snapshot']
+    if packet.get('board_override') and not st.session_state.get('board_override'):
+        st.session_state.board_override=packet['board_override'];st.session_state.board_basis=packet.get('board_basis')
+
+with st.expander('검증된 통계 파일 · 백업'):
+    st.caption('현재 시즌·동일 기준의 CSV/XLSX만 사용하세요. Yahoo ID와 STAT_BASIS(per_game 또는 season_total)가 필요합니다. FG/FT 평가에는 FGM/FGA/FTM/FTA가 필요합니다.')
+    uploaded=st.file_uploader('DraftBoard 파일',type=['csv','xlsx'])
+    if uploaded:
+        try:
+            b=read_board(uploaded.getvalue(),uploaded.name);evaluate_board(b)
+            records=json.loads(b.to_json(orient='records'))
+            if records!=st.session_state.get('board_override'):
+                st.session_state.board_override=records;st.session_state.board_basis=None;st.rerun()
+        except (ValueError,TypeError) as e:st.error('파일 검증 실패: '+str(e))
+    st.caption('같은 브라우저에 자동 저장됩니다. 저장소 삭제·다른 기기에는 이어지지 않으므로 백업을 보관하세요. Render 임시 디스크에 의존하지 않습니다.')
+    backup={k:st.session_state.get(k) for k in ('config','snapshot','board_override','board_basis')}
+    st.download_button('전체 상태 백업',json.dumps(backup,ensure_ascii=False,allow_nan=False),file_name='nba-draft-state.json')
+    restored=st.file_uploader('내 백업 복원',type=['json'])
+    if restored and st.button('검증 후 복원'):
+        try:
+            v=json.loads(restored.getvalue());c=v['config']
+            derive_state(v['snapshot'],c['league_id'],c['season'],c['team_id'])
+            if v.get('board_override'):evaluate_board(pd.DataFrame(v['board_override']),v.get('board_basis'))
+            st.session_state.restore_packet=v;st.rerun()
+        except (ValueError,TypeError,KeyError) as e:st.error('백업 검증 실패: '+str(e))
+
+raw=st.session_state.get('snapshot');cfg=st.session_state.get('config',{})
+if raw and cfg:
+    try:
+        derive_state(raw,cfg['league_id'],cfg['season'],cfg['team_id'])
+        revision=raw.get('revision')
+        if revision and revision!=st.session_state.get('ack_revision'):
+            st.session_state.ack_revision=revision;st.rerun()
+    except (ValueError,TypeError,KeyError) as e:st.error('동기화 검증 실패: '+str(e))
+
+@st.fragment(run_every='5s')
+def dashboard():
+    raw=st.session_state.get('snapshot');c=st.session_state.get('config',{})
+    if not raw or not c:
+        st.info('Yahoo 관찰 수신을 기다립니다. 확장을 설정하고 연결 시작을 눌러주세요.');return
+    try:
+        state=derive_state(raw,c['league_id'],c['season'],c['team_id'])
+        st.info(f"리그 {c['league_id']} · 수신 버전 {raw.get('revision','—')} · 지명 {len(state['drafted'])}명 · 내 순번 {state['slot'] or '미확인'} · 현재 전체 픽 {state['current'] or '미확인'}")
+        age=state['age_seconds'];st.caption('결과 표 수신: '+(f'{max(0,int(age))}초 전' if age is not None else '미확인'))
+        rows=st.session_state.get('board_override');board=pd.DataFrame(rows) if rows else browser_board(raw)
+        if board is None:
+            st.warning('선수 통계가 없습니다. Yahoo 선수 표를 열거나 검증된 통계 파일을 연결하세요.');return
+        model=evaluate_board(board,st.session_state.get('board_basis'))
+        st.caption(f"평가 모집단: 수집/파일 선수 {model.population}명 · 평가 가능 {len(model.categories)}/9 카테고리 · 전체 NBA 선수 수집을 보장하지 않습니다.")
+        if model.unavailable:st.warning('평가 제외: '+' / '.join(k+': '+v for k,v in model.unavailable.items()))
+        profile=roster_profile(model,state['ours'])
+        st.subheader('내 로스터 · 누적 카테고리')
+        owned=model.board.loc[state['ours']];st.write(', '.join(owned.PLAYER) if len(owned) else '아직 지명한 선수 없음')
+        if len(owned):
+            st.write('강점: '+(', '.join(profile['strong']) or '없음')+' · 약점: '+(', '.join(profile['weak']) or '없음'))
+            st.dataframe(pd.DataFrame([{'카테고리':cat,'경기당 합계 / 가중 성공률':profile['totals_per_game'].get(cat),'Z 합':profile['z_sum'].get(cat)} for cat in ('PTS','REB','AST','STL','BLK','3PM','FG%','FT%','TO')]),hide_index=True)
+        first=[p['player_id'] for p in state['snapshot']['picks'] if p['player_id'] in state['ours'] and p['pick']<=24]
+        strategies=punt_strategies(model,first);punts=strategies[0]['punt'] if strategies else ()
+        st.subheader('초반 조합 기반 펀트 전략')
+        if strategies:
+            st.write(('1명 기준 잠정 전략: ' if strategies[0]['provisional'] else '1–2라운드 조합의 모델 내 최상위 전략: ')+(', '.join(punts) or '균형 유지'))
+            st.dataframe(pd.DataFrame([{'펀트':', '.join(p['punt']) or '없음','평가점수':p['score'],'유지':', '.join(p['retained'])} for p in strategies[:5]]),hide_index=True)
+        else:st.caption('초반 지명 조합과 검증된 통계가 모이면 계산합니다.')
+        if not state['ready']:
+            st.warning('추천 일시 중지: 최신 결과, 전체 지명 기록, 내 팀과 스네이크 순번을 모두 확인해야 합니다. Yahoo 관찰 탭을 열어두세요.');return
+        recs=recommend(model,state['ours'],state['drafted'],state['current'],state['slot'],punts)
+        st.subheader('다음 추천 · Must Pick 2 / Backup 2')
+        if not recs:st.warning('검증된 미지명 후보가 없습니다.');return
+        st.write(f"내 다음 전체 픽 {recs[0]['current_my_pick']} → 그다음 {recs[0]['next_my_pick']}")
+        for rec in recs:
+            with st.container(border=True):
+                st.markdown(f"**{rec['role']} · {rec['PLAYER']}** · Yahoo ID {rec['YAHOO_ID']}")
+                st.write('ADP: '+(f"{rec['ADP']:.1f}" if rec['ADP'] is not None else '자료 없음')+' · 강화: '+(', '.join(rec['strengthens']) or '없음'))
+                st.write('유지할 강점: '+(', '.join(rec['protect']) or '아직 없음')+' · 강점 훼손: '+(', '.join(rec['hurts_protected']) or '없음'))
+                st.caption(rec['wait'])
+                if not rec['future_candidates']:st.caption('그다음 픽까지 남을 ADP 후보 자료가 없어 2단계 보너스를 적용하지 않았습니다.')
+    except (ValueError,TypeError,KeyError) as e:st.error('추천 검증 실패: '+str(e))
+
+dashboard()
+with st.expander('평가 기준과 한계'):
+    st.write('Z-score는 검증된 수집 모집단의 평균·모표준편차를 사용합니다. TO는 낮을수록 좋고 FG/FT는 성공 수 − 모집단 성공률 × 시도 수로 평가합니다. 시즌 합계는 GP로 나눕니다. 비어 있는 수치를 채우지 않습니다.')
+    st.write('펀트는 없음/1개/2개를 비교해 유지 카테고리의 초반 평균 Z − 펀트당 0.25로 정렬합니다. 최소 5개를 유지합니다. 명시된 점수식의 최적값이며 리그 승률의 최적해가 아닙니다.')
+    st.write('추천은 로스터 약점 보완·상위 강점 보호·다음 스네이크 픽까지의 ADP 후보 가치를 합산합니다. ADP는 평균 순서이며 실제 잔존 확률이 아닙니다. Must Pick도 자동 지명 명령은 아닙니다.')

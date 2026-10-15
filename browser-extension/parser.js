@@ -9,7 +9,12 @@
   const historical=u.searchParams.get('draft_results_period')==='previous'||(Number(seasonText.match(/20\d{2}/)?.[0]||new Date().getFullYear())<new Date().getFullYear());
   const season=Number(seasonText.match(/20\d{2}/)?.[0]||new Date().getFullYear());
   const out={version:1,league_id:match[1],season,historical,source_url:u.origin+u.pathname+(historical?'?draft_results_period=previous':''),captured_at:new Date().toISOString(),picks:[],players:[],adp:[],settings:{},teams:[]};
-  if(liveMatch){out.live=true;out.room_id=liveMatch[1];out.results_visible=false;}
+  if(liveMatch){
+   out.live=true;out.room_id=liveMatch[1];out.results_visible=false;
+   const header=text(doc.body),clock=header.match(/Round\s+(\d+)\s*,\s*Pick\s+(\d+)/i);
+   if(clock){const r=Number(clock[1]),p=Number(clock[2]);if(p>=1&&p<=12){out.current_pick=(r-1)*12+p;const wait=header.match(/You(?:'|’)re up in\s+(\d+)\s+Picks?/i);const mine=/Your Pick|You(?:'|’)re on the clock/i.test(header);if(wait||mine){const own=out.current_pick+(wait?Number(wait[1]):0),round=Math.floor((own-1)/12)+1,within=(own-1)%12+1;out.draft_slot=round%2?within:13-within;}}}
+  }
+  out.result_page=u.pathname.endsWith('/draftresults');
   for(const row of doc.querySelectorAll('#settings-table tr')){const cells=row.querySelectorAll('td');if(cells.length===2)out.settings[text(cells[0]).replace(/:$/,'')]=text(cells[1]);}
   for(const opt of doc.querySelectorAll('#fteamselect option')){if(/^\d+$/.test(opt.value))out.teams.push({id:opt.value,name:text(opt)});}
   for(const table of doc.querySelectorAll('table')){
@@ -36,6 +41,7 @@
     if(headers.includes('PTS') && headers.includes('FG%')){
      const statMode=liveMatch?Array.from(doc.querySelectorAll('select option:checked')).map(x=>text(x)).find(x=>/Stats$/.test(x))||'Live draft displayed stats':text(doc.querySelector('#statselect option:checked'));
      const record={YAHOO_ID:p.id,PLAYER:p.name,STAT_SOURCE:statMode};
+     record.STAT_BASIS=/Average|\(avg\)/i.test(statMode)?'per_game':/Total|Proj Stats/i.test(statMode)?'season_total':'unknown';
      for(const [target,source] of Object.entries({'PTS':'PTS','REB':'REB','AST':'AST','STL':'ST','BLK':'BLK','3PM':'3PTM','TO':'TO','FG%':'FG%','FT%':'FT%','GP':'GP*'}))record[target]=number(val(source));
      if(liveMatch)record.GP=number(val('GP'));
      for(const prefix of ['FG','FT']){const pair=val(prefix+'M/A*').split('/');if(pair.length===2){record[prefix+'M']=number(pair[0]);record[prefix+'A']=number(pair[1]);}}

@@ -1,27 +1,46 @@
-<!doctype html><html lang="ko"><meta charset="utf-8"><style>body{font:14px system-ui;color:#24334b;margin:0}button{padding:8px;border-radius:6px;border:1px solid #bbb;background:#fff;cursor:pointer}#status{padding:8px;background:#eef5ff;border-radius:6px}</style>
-<div id="status">브라우저 확장 연결을 기다립니다.</div>
-<button id="connect">이 리그 연결</button> <button id="disconnect">연결 해제</button>
+<!doctype html><html lang="ko"><meta charset="utf-8"><style>body{font:14px system-ui;color:#24334b;margin:0}button{padding:7px;border-radius:6px;border:1px solid #bbb;background:#fff;cursor:pointer}#status{padding:8px;background:#eef5ff;border-radius:6px}#receipt{font-size:12px}</style>
+<div id="status">브라우저 연결을 기다립니다.</div><div id="receipt"></div>
+<button id="connect">연결 시작</button> <button id="disconnect">연결 중지</button>
 <script>
-let args={}, last='', ready=false;
-function send(type,extra={}){parent.postMessage({isStreamlitMessage:true,type,...extra}, location.origin)}
-function bridge(type,extra={}){window.postMessage({type,...extra},location.origin)}
-window.addEventListener('message', e=>{
- if(e.source===parent && e.data?.type==='streamlit:render'){
-  args=e.data.args; ready=true; bridge('NBA_HELPER_READY',{league_id:args.league_id,season:args.season});
+let args={},last='',packet=null,booted=false,saved=false;
+const origin=location.origin,cacheKey='nba-helper:durable:v2';
+function send(type,extra={}){parent.postMessage({isStreamlitMessage:true,type,...extra},origin)}
+function bridge(type,extra={}){window.postMessage({type,...extra},origin)}
+function receipt(){if(args.ack_revision&&packet?.snapshot?.revision===args.ack_revision)document.getElementById('receipt').textContent='Render 수신 확인 · 버전 '+args.ack_revision+(saved?' · 이 브라우저에 자동 저장됨':' · 저장 상태 확인 필요');}
+function emit(){if(!packet)return;const sig=JSON.stringify(packet);if(sig!==last){last=sig;send('streamlit:setComponentValue',{value:packet,dataType:'json'});}}
+function persist(){
+ try{localStorage.setItem(cacheKey,JSON.stringify(packet));document.getElementById('receipt').textContent='이 브라우저에 자동 저장됨';saved=true;return true;}
+ catch(e){saved=false;document.getElementById('receipt').textContent='저장 실패: 백업을 내려받으세요. '+e.message;return false;}
+}
+window.addEventListener('message',e=>{
+ if(e.source===parent&&e.data?.type==='streamlit:render'){
+  args=e.data.args;
+  if(!booted){booted=true;try{packet=JSON.parse(localStorage.getItem(cacheKey)||'null');saved=!!packet;}catch{}emit();}
+  if(args.restore_packet){packet=args.restore_packet;persist();emit();}
+  if(args.clear_cache){localStorage.removeItem(cacheKey);packet=null;last='';}
+  if(args.league_id&&(packet?.config?.league_id!==args.league_id||packet?.config?.season!==args.season||packet?.config?.team_id!==args.team_id)){packet={config:{league_id:args.league_id,team_id:args.team_id,season:args.season},snapshot:null};persist();emit();}
+  if(args.board_to_save&&packet&&args.board_scope?.league_id===packet.config.league_id&&args.board_scope?.season===packet.config.season&&args.board_scope?.team_id===packet.config.team_id){packet.board_override=args.board_to_save;packet.board_basis=args.board_basis;persist();}
+  if(args.ack_revision&&packet?.snapshot?.revision===args.ack_revision){
+   receipt();
+   bridge('NBA_HELPER_ACK',{league_id:packet.config.league_id,revision:args.ack_revision});
+  }
+  bridge('NBA_HELPER_READY',{league_id:args.league_id,season:args.season});
+  return;
  }
- if(e.source!==window || e.origin!==location.origin)return;
- if(e.data?.type==='NBA_HELPER_AVAILABLE' && ready)bridge('NBA_HELPER_READY',{league_id:args.league_id,season:args.season});
- if(e.data?.type==='NBA_HELPER_SNAPSHOT' && ready){
-  const v=e.data.value; if(String(v?.league_id)!==String(args.league_id)||v?.season!==args.season)return;
-  document.getElementById('status').textContent=`브라우저 연결됨 · 지명 ${v.picks?.length||0}개 · ${v.captured_at||''}`;
-  const signature=JSON.stringify(v);if(signature===last)return;last=signature;
-  send('streamlit:setComponentValue',{value:v,dataType:'json'});
+ if(e.source!==window||e.origin!==origin)return;
+ if(e.data?.type==='NBA_HELPER_AVAILABLE')bridge('NBA_HELPER_READY',{league_id:args.league_id,season:args.season});
+ if(e.data?.type==='NBA_HELPER_SNAPSHOT'){
+  const v=e.data.value;if(!v||args.league_id&&v.league_id!==args.league_id)return;
+  if(args.season&&v.season!==args.season)return;
+  const old=packet?.config?.league_id===v.league_id&&packet?.config?.season===v.season?packet:{};
+  packet={...old,config:e.data.config||old.config,snapshot:v};
+  document.getElementById('status').textContent='Yahoo 관찰 수신 · 지명 '+(v.picks?.length||0)+'개 · 버전 '+v.revision;
+  persist();receipt();emit();
  }
- if(e.data?.type==='NBA_HELPER_DISCONNECTED'){
-  last='';document.getElementById('status').textContent='연결 해제됨';send('streamlit:setComponentValue',{value:null,dataType:'json'});
- }
+ if(e.data?.type==='NBA_HELPER_DISCONNECTED')document.getElementById('status').textContent='연결 중지됨 · 저장한 기록은 유지됩니다.';
+ if(e.data?.type==='NBA_HELPER_ERROR')document.getElementById('status').textContent=e.data.error;
 });
-document.getElementById('connect').onclick=()=>bridge('NBA_HELPER_CONNECT',{league_id:args.league_id,season:args.season});
+document.getElementById('connect').onclick=()=>bridge('NBA_HELPER_CONNECT',{league_id:args.league_id,team_id:args.team_id,season:args.season});
 document.getElementById('disconnect').onclick=()=>bridge('NBA_HELPER_DISCONNECT');
-send('streamlit:componentReady',{apiVersion:1});send('streamlit:setFrameHeight',{height:96});
+send('streamlit:componentReady',{apiVersion:1});send('streamlit:setFrameHeight',{height:112});
 </script></html>

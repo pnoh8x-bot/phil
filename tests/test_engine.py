@@ -9,3 +9,4 @@ def test_adp_and_missing_efficiency():
     b=read_board(df.to_csv(index=False).encode(),"test.csv")
     assert candidate_pool(b,22,["A"],[]).iloc[0]["PLAYER"]=="B"
     assert team_totals(b,["A"])["FG%"] is None
+

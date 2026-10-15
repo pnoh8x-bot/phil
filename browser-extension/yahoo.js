@@ -1,31 +1,27 @@
 (async()=>{
  let running=false;
+ function monitorView(){
+  if(!document.getElementById('nba-observer-banner')){
+   const banner=document.createElement('div');banner.id='nba-observer-banner';banner.textContent='NBA Helper 관찰용 탭 · 이 탭을 열어두세요. 선수 지명은 원래 Yahoo 탭에서 진행합니다.';
+   banner.style.cssText='position:fixed;bottom:0;left:0;z-index:2147483647;background:#14314e;color:white;padding:6px;font:13px sans-serif';document.body.appendChild(banner);
+  }
+  const tabs=Array.from(document.querySelectorAll('[role=tab]'));
+  const results=tabs.find(e=>e.textContent.trim()==='Results');
+  if(results&&results.getAttribute('aria-selected')!=='true'){results.click();return;}
+  const rounds=tabs.find(e=>e.textContent.trim()==='Round by Round');
+  if(rounds&&rounds.getAttribute('aria-selected')!=='true')rounds.click();
+ }
  async function capture(){
   if(running)return;running=true;
   try{
    const {nbaConfig}=await chrome.storage.local.get('nbaConfig');if(!nbaConfig?.enabled)return;
-   const observation=NBAParser.parse(document,location.href);
-   if(!observation||observation.historical||observation.season!==nbaConfig.season)return;
-   if(observation.live){if(observation.room_id!==(nbaConfig.draft_room_id||nbaConfig.league_id))return;observation.league_id=nbaConfig.league_id;}else if(observation.league_id!==nbaConfig.league_id)return;
-   const key=`nba:${nbaConfig.league_id}:${nbaConfig.season}`;
-   const stored=(await chrome.storage.local.get(key))[key]||{version:1,league_id:nbaConfig.league_id,season:nbaConfig.season,picks:[],players:[],adp:[],settings:{},teams:[]};
-   const merge=(old,rows)=>Object.values(Object.fromEntries([...old,...rows].map(p=>[p.YAHOO_ID,p])));
-   if(observation.players.length){const source=observation.players[0].STAT_SOURCE;if(stored.stat_source && stored.stat_source!==source)stored.players=[];stored.stat_source=source;}
-   stored.players=merge(stored.players,observation.players);stored.adp=merge(stored.adp,observation.adp);
-   stored.settings={...stored.settings,...observation.settings};
-   if(observation.teams.length)stored.teams=observation.teams;
-   // Replace complete results snapshots, including undo/reset, never merge pick histories.
-   const canReplace=observation.results_visible||(!stored.live||Date.now()-Date.parse(stored.picks_at||0)>30000);
-   if((location.pathname.endsWith('/draftresults')||observation.results_visible)&&canReplace){stored.picks=observation.picks;stored.draft_teams=observation.draft_teams;stored.draft_status=observation.draft_status;stored.picks_at=observation.captured_at;stored.live=!!observation.live;}
-   const adps=Object.fromEntries(stored.adp.map(p=>[p.YAHOO_ID,p]));
-   stored.board=stored.players.filter(p=>adps[p.YAHOO_ID]).map(p=>({...p,...adps[p.YAHOO_ID],ADP_RANK:1}));
-   stored.source_url=observation.source_url;stored.captured_at=observation.captured_at;
-   await chrome.storage.local.set({[key]:stored});
-  }finally{running=false;}
+   const observation=NBAParser.parse(document,location.href);if(!observation)return;
+   const result=await chrome.runtime.sendMessage({type:'NBA_CAPTURE',observation});
+   if(result?.ok&&result.monitor)monitorView();
+   if(result&&!result.ok)console.warn('NBA Helper:',result.error);
+  }catch(e){console.warn('NBA Helper sync:',e.message);}finally{running=false;}
  }
- // Observe rendered changes; no Yahoo API requests are made.
- let timer;new MutationObserver(()=>{clearTimeout(timer);timer=setTimeout(capture,800)}).observe(document.body,{childList:true,subtree:true,characterData:true});
+ let timer;new MutationObserver(()=>{clearTimeout(timer);timer=setTimeout(capture,500)}).observe(document.body,{childList:true,subtree:true,characterData:true});
  setInterval(capture,5000);capture();
- // Results page is safe to reload; draft-room tabs are never reloaded or clicked.
  setInterval(async()=>{const {nbaConfig}=await chrome.storage.local.get('nbaConfig');if(nbaConfig?.enabled&&location.pathname.endsWith('/draftresults')&&!location.search.includes('previous')&&!document.querySelector('.yfa-draft-scheduled'))location.reload();},15000);
 })();

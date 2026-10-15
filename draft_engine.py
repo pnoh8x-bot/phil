@@ -24,14 +24,23 @@ def read_board(content: bytes, name: str) -> pd.DataFrame:
     missing = sorted(set(REQUIRED) - set(board.columns))
     if missing:
         raise ValueError(f"Missing required columns: {', '.join(missing)}")
-    board = board.dropna(subset=["PLAYER", "ADP_RANK"]).copy()
+    if board[['PLAYER','ADP_RANK']].isna().any().any():
+        raise ValueError('Missing PLAYER or ADP_RANK; source rows cannot be silently discarded')
+    board = board.copy()
     board["PLAYER"] = board["PLAYER"].astype(str).str.strip()
-    if board["PLAYER"].str.casefold().duplicated().any():
+    if (board['PLAYER']=='').any():raise ValueError('Empty PLAYER')
+    if 'YAHOO_ID' in board:
+        from recommendations import yahoo_id
+        board['YAHOO_ID']=board['YAHOO_ID'].map(yahoo_id)
+        if board['YAHOO_ID'].duplicated().any():raise ValueError('Duplicate Yahoo player IDs')
+    elif board["PLAYER"].str.casefold().duplicated().any():
         raise ValueError("Duplicate PLAYER names found")
     numeric = [c for c in REQUIRED if c not in ["PLAYER"]]
     numeric += [c for c in ("FGM","FGA","FTM","FTA","GP","ADP_AVG") if c in board]
     for col in numeric:
-        board[col] = pd.to_numeric(board[col].astype(str).str.replace(",","",regex=False).str.replace("%","",regex=False), errors="coerce")
+        original=board[col]
+        board[col] = pd.to_numeric(original.astype(str).str.replace(",","",regex=False).str.replace("%","",regex=False), errors="coerce")
+        if (original.notna() & board[col].isna()).any():raise ValueError('Invalid numeric source: '+col)
     if board["ADP_RANK"].isna().any() or (board["ADP_RANK"] <= 0).any():
         raise ValueError("Missing or invalid ADP_RANK")
     if board["ADP_RANK"].duplicated().any():
