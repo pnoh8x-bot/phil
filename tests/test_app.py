@@ -106,3 +106,15 @@ def test_completed_draft_retains_roster_and_never_recommends_another_player():
     assert any('드래프트 종료' in x.value for x in at.success)
     assert not any('Yahoo ID' in x.value for x in at.markdown)
 
+def test_received_packet_is_acknowledged_even_when_clock_is_inconsistent():
+    raw=snapshot();raw['revision']=189;raw['current_pick']=1
+    packet={'config':{'league_id':'123','team_id':'9','season':2026},'snapshot':raw}
+    calls=[]
+    def component(**kw):calls.append(kw);return packet
+    with patch('streamlit.components.v1.declare_component',return_value=component):
+        at=AppTest.from_file(str(Path(__file__).parents[1]/'app.py')).run()
+    assert not at.exception and at.session_state['ack_revision']==189
+    assert any(c.get('ack_revision')==189 and c.get('ack_scope') for c in calls)
+    assert any('Current pick is older' in x.value for x in at.error)
+    assert not any('Yahoo ID' in x.value for x in at.markdown)
+

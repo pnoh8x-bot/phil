@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 from draft_engine import read_board
-from yahoo_sync import browser_board
+from yahoo_sync import browser_board,validate_snapshot
 from draft_state import derive_state
 from recommendations import evaluate_board,roster_profile,punt_strategies,recommend
 
@@ -29,11 +29,12 @@ restore=st.session_state.pop('restore_packet',None)
 if restore:desired=restore['config']
 packet=bridge(league_id=desired.get('league_id'),team_id=desired.get('team_id'),season=desired.get('season'),
               ack_revision=st.session_state.get('ack_revision'),board_to_save=st.session_state.get('board_override'),
+              ack_scope=st.session_state.get('ack_scope'),
               board_basis=st.session_state.get('board_basis'),board_scope=cfg,restore_packet=restore,key='yahoo-bridge',default=None)
 if isinstance(packet,dict) and isinstance(packet.get('config'),dict):
     incoming=packet['config'];scope=(incoming.get('league_id'),incoming.get('season'))
-    if cfg and (scope!=(cfg.get('league_id'),cfg.get('season')) or incoming.get('team_id')!=cfg.get('team_id')):
-        for key in ('board_override','board_basis','snapshot','ack_revision'):st.session_state.pop(key,None)
+    if cfg and (scope!=(cfg.get('league_id'),cfg.get('season')) or incoming.get('team_id')!=cfg.get('team_id') or incoming.get('draft_room_id')!=cfg.get('draft_room_id')):
+        for key in ('board_override','board_basis','snapshot','ack_revision','ack_scope'):st.session_state.pop(key,None)
     st.session_state.config=incoming
     if packet.get('snapshot'):st.session_state.snapshot=packet['snapshot']
     if packet.get('board_override') and not st.session_state.get('board_override'):
@@ -64,10 +65,13 @@ with st.expander('검증된 통계 파일 · 백업'):
 raw=st.session_state.get('snapshot');cfg=st.session_state.get('config',{})
 if raw and cfg:
     try:
-        derive_state(raw,cfg['league_id'],cfg['season'],cfg['team_id'],room_id=cfg.get('draft_room_id'))
+        # Receipt is independent of recommendation readiness. Inconsistent clocks
+        # are reported by the dashboard, but must not deadlock transport ACKs.
+        validate_snapshot(raw,cfg['league_id'],cfg['season'])
         revision=raw.get('revision')
-        if revision and revision!=st.session_state.get('ack_revision'):
-            st.session_state.ack_revision=revision;st.rerun()
+        ack_scope=json.dumps([cfg['league_id'],cfg['season'],cfg['team_id'],raw.get('room_id')],separators=(',',':'))
+        if revision and (revision!=st.session_state.get('ack_revision') or ack_scope!=st.session_state.get('ack_scope')):
+            st.session_state.ack_revision=revision;st.session_state.ack_scope=ack_scope;st.rerun()
     except (ValueError,TypeError,KeyError) as e:st.error('동기화 검증 실패: '+str(e))
 
 @st.fragment(run_every='5s')

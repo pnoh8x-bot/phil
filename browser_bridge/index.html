@@ -2,12 +2,23 @@
 <div id="status">브라우저 연결을 기다립니다.</div><div id="receipt"></div>
 <button id="connect">연결 시작</button> <button id="disconnect">연결 중지</button>
 <script>
-let args={},last='',packet=null,booted=false,saved=false;
+let args={},last='',packet=null,booted=false,saved=false,inFlight=null,lastSend=0,flushTimer;
 const origin=location.origin,cacheKey='nba-helper:durable:v2';
+const scope=p=>JSON.stringify([p?.config?.league_id,p?.config?.season,p?.config?.team_id,p?.snapshot?.room_id||null]);
 function send(type,extra={}){parent.postMessage({isStreamlitMessage:true,type,...extra},origin)}
 function bridge(type,extra={}){window.postMessage({type,...extra},origin)}
 function receipt(){if(args.ack_revision&&packet?.snapshot?.revision===args.ack_revision)document.getElementById('receipt').textContent='Render 수신 확인 · 버전 '+args.ack_revision+(saved?' · 이 브라우저에 자동 저장됨':' · 저장 상태 확인 필요');}
-function emit(){if(!packet)return;const sig=JSON.stringify(packet);if(sig!==last){last=sig;send('streamlit:setComponentValue',{value:packet,dataType:'json'});}}
+function emit(){
+ if(!packet||!booted)return;
+ clearTimeout(flushTimer);const now=Date.now(),sig=JSON.stringify(packet);
+ if(inFlight&&now-inFlight.at<15000){flushTimer=setTimeout(emit,15000-(now-inFlight.at));return;}
+ if(inFlight){inFlight=null;last='';document.getElementById('receipt').textContent='서버 응답 지연 · 저장된 최신 데이터를 재전송합니다.';}
+ if(sig===last)return;
+ if(now-lastSend<3000){flushTimer=setTimeout(emit,3000-(now-lastSend));return;}
+ last=sig;lastSend=now;inFlight=packet.snapshot?.revision?{revision:packet.snapshot.revision,scope:scope(packet),at:now}:null;
+ send('streamlit:setComponentValue',{value:packet,dataType:'json'});
+ if(inFlight)flushTimer=setTimeout(emit,15000);
+}
 function persist(){
  try{localStorage.setItem(cacheKey,JSON.stringify(packet));document.getElementById('receipt').textContent='이 브라우저에 자동 저장됨';saved=true;return true;}
  catch(e){saved=false;document.getElementById('receipt').textContent='저장 실패: 백업을 내려받으세요. '+e.message;return false;}
@@ -15,6 +26,7 @@ function persist(){
 window.addEventListener('message',e=>{
  if(e.source===parent&&e.data?.type==='streamlit:render'){
   args=e.data.args;
+  if(inFlight&&args.ack_revision===inFlight.revision&&args.ack_scope===inFlight.scope){inFlight=null;clearTimeout(flushTimer);}
   if(!booted){booted=true;try{packet=JSON.parse(localStorage.getItem(cacheKey)||'null');saved=!!packet;}catch{}emit();}
   if(args.restore_packet){packet=args.restore_packet;persist();emit();}
   if(args.clear_cache){localStorage.removeItem(cacheKey);packet=null;last='';}
@@ -25,6 +37,7 @@ window.addEventListener('message',e=>{
    bridge('NBA_HELPER_ACK',{league_id:packet.config.league_id,room_id:packet.snapshot.room_id,revision:args.ack_revision});
   }
   bridge('NBA_HELPER_READY',{league_id:args.league_id,season:args.season});
+  emit();
   return;
  }
  if(e.source!==window||e.origin!==origin)return;

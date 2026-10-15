@@ -1,0 +1,23 @@
+/* Execute the production iframe script with a slow/unresponsive synthetic server. */
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+let now=100000,serial=0,timers=new Map(),messages=[],local=new Map(),handler;
+const elements=Object.fromEntries(['status','receipt','connect','disconnect'].map(k=>[k,{textContent:''}]));
+const parent={postMessage:m=>messages.push(structuredClone(m))};
+const win={location:{origin:'https://nba-draft-helper.onrender.com'},postMessage:()=>{},addEventListener:(type,fn)=>handler=fn};
+const script=fs.readFileSync(require.resolve('../browser_bridge/index.html'),'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
+vm.runInNewContext(script,{window:win,parent,location:win.location,document:{getElementById:id=>elements[id]},localStorage:{getItem:k=>local.get(k)||null,setItem:(k,v)=>local.set(k,v),removeItem:k=>local.delete(k)},Date:{now:()=>now},setTimeout:(fn,ms)=>{const id=++serial;timers.set(id,{fn,at:now+ms});return id;},clearTimeout:id=>timers.delete(id)});
+const advance=ms=>{const end=now+ms;for(let n=0;n<100;n++){const due=[...timers].filter(([id,t])=>t.at<=end).sort((a,b)=>a[1].at-b[1].at)[0];if(!due)break;timers.delete(due[0]);now=due[1].at;due[1].fn();}now=end;};
+const values=()=>messages.filter(m=>m.type==='streamlit:setComponentValue'&&m.value.snapshot);
+const cfg={league_id:'123',team_id:'9',season:2026},room='456',scope=JSON.stringify(['123',2026,'9',room]);
+const observe=revision=>handler({source:win,origin:win.location.origin,data:{type:'NBA_HELPER_SNAPSHOT',config:cfg,value:{version:1,league_id:'123',season:2026,room_id:room,revision,picks:[]}}});
+const render=args=>handler({source:parent,data:{type:'streamlit:render',args}});
+observe(1);assert.equal(values().length,0,'no messages before server bootstrap');
+render({league_id:'123',team_id:'9',season:2026});assert.equal(values().length,1,'cached packet delivered after bootstrap');
+for(let revision=2;revision<=100;revision++)observe(revision);
+assert.equal(values().length,1,'100 updates cannot flood a slow server');
+assert.equal(JSON.parse(local.get('nba-helper:durable:v2')).snapshot.revision,100,'latest snapshot remains durable');
+render({league_id:'123',team_id:'9',season:2026,ack_revision:1,ack_scope:'wrong-scope'});advance(3000);assert.equal(values().length,1,'wrong-room ACK cannot release in-flight packet');
+render({league_id:'123',team_id:'9',season:2026,ack_revision:1,ack_scope:scope});advance(3000);assert.equal(values().length,2);assert.equal(values().at(-1).value.snapshot.revision,100,'ACK releases newest snapshot, no intermediate backlog');
+advance(15000);assert.equal(values().length,3,'missing server ACK causes retry');assert.equal(values().at(-1).value.snapshot.revision,100);
+render({league_id:'123',team_id:'9',season:2026,ack_revision:100,ack_scope:scope});advance(20000);assert.equal(values().length,3,'ACK stops retry loop');
+console.log('8 production iframe flow-control checks passed');
