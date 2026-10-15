@@ -43,3 +43,17 @@ def test_ui_empty_connection_never_shows_recommendations():
         at=AppTest.from_file(str(Path(__file__).parents[1]/'app.py')).run()
     assert not at.exception and any('수신을 기다립니다' in x.value for x in at.info)
 
+def test_component_packet_flows_through_browser_board_to_ack_and_recommendations():
+    raw=snapshot();raw['revision']=19
+    b=fixture();b['ADP_RANK']=1;raw['board']=b.to_dict('records')
+    packet={'config':{'league_id':'123','team_id':'9','season':2026},'snapshot':raw}
+    calls=[]
+    def component(**kw):calls.append(kw);return packet
+    with patch('streamlit.components.v1.declare_component',return_value=component):
+        at=AppTest.from_file(str(Path(__file__).parents[1]/'app.py')).run()
+    assert not at.exception
+    assert at.session_state['ack_revision']==19
+    assert any(c.get('ack_revision')==19 for c in calls)
+    cards=[x.value for x in at.markdown if 'Yahoo ID' in x.value]
+    assert len(cards)==4 and all(x.rsplit('Yahoo ID ',1)[1] not in {'1','2','3'} for x in cards)
+
