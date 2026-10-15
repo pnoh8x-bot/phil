@@ -6,6 +6,8 @@ function reduce(old,o,c){
  if(o.live?o.room_id!==(c.draft_room_id||c.league_id):o.league_id!==c.league_id)throw Error('Wrong league/room');
  const s=JSON.parse(JSON.stringify(old||{version:1,league_id:c.league_id,season:c.season,players:[],adp:[],picks:[],teams:[],settings:{}}));
  if(s.league_id!==c.league_id||s.season!==c.season)throw Error('Stored scope mismatch');
+ if(o.connection_error){s.connection_error=o.connection_error;s.history_complete=false;s.picks_at=null;s.captured_at=o.captured_at;s.revision=(s.revision||0)+1;return s;}
+ delete s.connection_error;
  const merge=(a,b)=>Object.values(Object.fromEntries([...a,...b].map(p=>[id(p.YAHOO_ID),{...p,YAHOO_ID:id(p.YAHOO_ID)}])));
  const quality=rows=>{const p=rows?.[0];if(!p)return -1;const year=p.STAT_SEASON||Number(p.STAT_SOURCE?.match(/20\d{2}/)?.[0]||c.season);if(year!==c.season||!['per_game','season_total'].includes(p.STAT_BASIS))return 0;const volume=['FGM','FGA','FTM','FTA'].every(k=>k in p);return (/Proj|\(proj\)/i.test(p.STAT_SOURCE||'')?2:0)+(volume?2:1);};
  // Retain observed shot volumes when the live table only has percentages.

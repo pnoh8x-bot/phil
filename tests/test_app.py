@@ -4,10 +4,11 @@ from unittest.mock import patch
 from streamlit.testing.v1 import AppTest
 from test_recommendations import fixture,snapshot
 
-def run_ui(age=0,drop_rates=False,missing_own=False):
+def run_ui(age=0,drop_rates=False,missing_own=False,connection_error=False):
     at=AppTest.from_file(str(Path(__file__).parents[1]/'app.py'))
     at.session_state['config']={'league_id':'123','team_id':'9','season':2026}
     raw=snapshot(age);raw['revision']=7
+    if connection_error:raw['connection_error']='Yahoo 중복 드래프트 접속으로 연결이 끊겼습니다.'
     at.session_state['snapshot']=raw;at.session_state['ack_revision']=7
     b=fixture()
     if drop_rates:b=b.drop(columns=['FGM','FGA','FTM','FTA'])
@@ -26,6 +27,11 @@ def test_ui_displays_four_unique_cards_and_two_snake_picks():
 def test_ui_stale_history_stops_recommendation_cards():
     at=run_ui(age=90)
     assert any('추천 일시 중지' in x.value for x in at.warning)
+    assert not any('Yahoo ID' in x.value for x in at.markdown)
+
+def test_ui_duplicate_client_disconnect_never_shows_cards():
+    at=run_ui(connection_error=True)
+    assert any('중복 드래프트 접속' in x.value for x in at.error)
     assert not any('Yahoo ID' in x.value for x in at.markdown)
 
 def test_ui_discloses_missing_shot_volumes_and_seven_category_mode():

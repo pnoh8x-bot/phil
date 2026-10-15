@@ -26,5 +26,5 @@ def derive_state(raw,league,season,team_id,teams=12):
     if age is not None and age< -10:raise ValueError('Observation timestamp is in the future')
     fresh=age is not None and -10<=age<=45
     return {'snapshot':s,'ours':ours,'drafted':drafted,'slot':slot,'current':current,'age_seconds':age,
-            'ready':fresh and bool(own_label) and slot is not None and current==after and s['complete_pick_sequence'] and s.get('history_complete',True),
+            'ready':fresh and not s.get('connection_error') and bool(own_label) and slot is not None and current==after and s['complete_pick_sequence'] and s.get('history_complete',True),
             'team_resolved':bool(own_label),'early_ids':ours[:2]}

@@ -174,6 +174,10 @@ def test_next_snake_distance_changes_current_pick_opportunity_cost():
     assert near[0]['next_my_pick']==22 and near[0]['YAHOO_ID']=='2'
     assert far[0]['next_my_pick']==24 and far[0]['YAHOO_ID']=='1'
 
+def test_connection_error_blocks_fresh_history_too():
+    b=snapshot();b['connection_error']='Yahoo duplicate client'
+    assert not derive_state(b,'123',2026,'9')['ready']
+
 def test_different_round_one_two_pairs_select_different_best_punts():
     m=evaluate_board(fixture());m.z.loc[:,:]=1
     m.z.loc[['1','2'],['PTS','REB']]=[-4,-3]

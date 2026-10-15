@@ -1,5 +1,5 @@
 {
- "manifest_version":3,"name":"NBA Draft Helper — Yahoo Browser Sync","version":"0.2.1",
+ "manifest_version":3,"name":"NBA Draft Helper — Yahoo Browser Sync","version":"0.2.2",
  "background":{"service_worker":"background.js"},
  "description":"Read displayed Yahoo Fantasy tables and sync to NBA Draft Helper. No Yahoo API or cookies.",
  "permissions":["storage"],

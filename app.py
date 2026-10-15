@@ -16,7 +16,7 @@ st.caption('12팀 H2H · 9CAT · 스네이크 · Yahoo 화면 자동 동기화')
 bridge=components.declare_component('yahoo_browser_bridge',path=str(Path(__file__).parent/'browser_bridge'))
 cfg=st.session_state.get('config',{})
 with st.expander('브라우저 연결 · 최초 설정',expanded=not bool(cfg)):
-    st.write('확장을 설치한 같은 Chrome/Edge에서 Yahoo와 이 앱을 열어두세요. 지명은 Yahoo에서 직접 합니다. 확장은 결과 관찰용 탭을 자동으로 열어둡니다.')
+    st.write('확장을 설치한 같은 Chrome/Edge에서 Yahoo와 이 앱을 열어두세요. 지명은 Yahoo에서 직접 합니다. 드래프트 탭은 하나만 유지하고 Results → Round by Round가 표시될 때 결과를 수집합니다.')
     ext=Path(__file__).parent/'browser-extension.zip'
     if ext.exists():st.download_button('확장 프로그램 다운로드',ext.read_bytes(),file_name='nba-yahoo-sync.zip')
     st.caption('압축 해제 → chrome://extensions → 개발자 모드 → 압축해제된 확장 로드 → 확장에 팀 주소 입력 → Yahoo와 Helper 새로고침. 모의 방은 방 주소도 입력하세요.')
@@ -78,6 +78,8 @@ def dashboard():
     try:
         state=derive_state(raw,c['league_id'],c['season'],c['team_id'])
         st.info(f"리그 {c['league_id']} · 수신 버전 {raw.get('revision','—')} · 지명 {len(state['drafted'])}명 · 내 순번 {state['slot'] or '미확인'} · 현재 전체 픽 {state['current'] or '미확인'}")
+        if raw.get('connection_error'):
+            st.error(raw['connection_error']);return
         age=state['age_seconds'];st.caption('결과 표 수신: '+(f'{max(0,int(age))}초 전' if age is not None else '미확인'))
         rows=st.session_state.get('board_override');board=pd.DataFrame(rows) if rows else browser_board(raw)
         if board is None:
@@ -105,7 +107,7 @@ def dashboard():
             st.dataframe(pd.DataFrame([{'펀트':', '.join(p['punt']) or '없음','평가점수':p['score'],'유지':', '.join(p['retained'])} for p in strategies[:5]]),hide_index=True)
         else:st.caption('초반 지명 조합과 검증된 통계가 모이면 계산합니다.')
         if not state['ready']:
-            st.warning('추천 일시 중지: 최신 결과, 전체 지명 기록, 내 팀과 스네이크 순번을 모두 확인해야 합니다. Yahoo 관찰 탭을 열어두세요.');return
+            st.warning('추천 일시 중지: 최신 결과, 전체 지명 기록, 내 팀과 스네이크 순번을 모두 확인해야 합니다. 같은 Yahoo 탭에서 Results → Round by Round를 표시하세요.');return
         recs=recommend(model,state['ours'],state['drafted'],state['current'],state['slot'],punts)
         st.subheader('다음 추천 · Must Pick 2 / Backup 2')
         if not recs:st.warning('검증된 미지명 후보가 없습니다.');return

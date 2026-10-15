@@ -13,7 +13,7 @@ function bind(storage,win){
   if(m?.type==='NBA_HELPER_READY'){args=m.league_id?{league_id:String(m.league_id),season:m.season}:null;await publish();}
   if(m?.type==='NBA_HELPER_CONNECT'&&/^\d+$/.test(String(m.league_id))){
    const {nbaConfig:c}=await storage.get('nbaConfig');args={league_id:String(m.league_id),season:m.season};stopped=false;
-   await storage.set({nbaConfig:{...(c?.league_id===args.league_id?c:{}),...args,team_id:m.team_id,enabled:true,auto_monitor:true}});await publish();
+   await storage.set({nbaConfig:{...(c?.league_id===args.league_id?c:{}),...args,team_id:m.team_id,enabled:true,auto_monitor:false}});await publish();
   }
   if(m?.type==='NBA_HELPER_ACK')await storage.set({nbaLastAck:{league_id:m.league_id,revision:m.revision,received_at:new Date().toISOString()}});
   if(m?.type==='NBA_HELPER_DISCONNECT'){stopped=true;const {nbaConfig:c}=await storage.get('nbaConfig');await storage.set({nbaConfig:{...c,enabled:false}});win.postMessage({type:'NBA_HELPER_DISCONNECTED'},win.location.origin);}

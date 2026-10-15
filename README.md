@@ -5,7 +5,6 @@
 ## Implemented
 
 - Chrome/Edge MV3 extension reads visible Yahoo tables and player IDs. A service worker serializes observations into league/season-scoped `chrome.storage.local`, retaining a previous snapshot. Complete results can replace history (including undo); partial/virtualized observations cannot erase history and pause recommendations.
-- In live rooms a duplicated Yahoo tab is dedicated to Results → Round by Round; the original tab stays available for drafting. The observer clicks navigation tabs only. Whether Yahoo permits both draft connections concurrently **still needs actual Chrome testing**.
 - Extension → Streamlit iframe transport with revision ACK shown in the extension popup. Receiving a message is distinguished from observing Yahoo and from validating recommendation inputs.
 - Exact canonical Yahoo ID exclusions, roster ownership and snake-slot inference. No name fallback in the recommendation engine. Stale (>45s), incomplete, conflicting, wrong-season and wrong-league observations stop recommendations. Team IDs are never treated as draft slots.
 - Population Z-scores (ddof=0), lower-is-better TO, and volume-weighted FG/FT impact (`made − population_rate × attempts`). Season totals normalize by positive GP. Unknown/mixed units, invalid numbers and duplicate IDs are rejected. Missing statistics remain missing.
@@ -19,8 +18,8 @@
 
 1. Download `browser-extension.zip`, unpack, enable developer mode at `chrome://extensions`, and load the unpacked folder. Update/reload an older extension installation.
 2. In the extension enter your Yahoo team URL. For mock rooms also enter the room URL; only its numeric room ID is retained, never auth query strings.
-3. Open Yahoo and the deployed Helper in the **same Chrome/Edge profile**. Reload both tabs, connect, and leave the results observer tab open. Keep the device awake; browser background throttling/disconnection can pause recommendations.
-4. View the Yahoo player/stat table (and paginate/scroll for coverage) or upload a verified current-season board. In the normal Players screen choose **Remaining Games (proj)** for current-season totals with FGM/FGA/FTM/FTA; those volumes were verified on 25 actual displayed rows. Extension 0.2.1 retains this source when a live table later supplies percentages only. Live-only projections support seven categories. Browser-visible subsets are explicitly labeled as the evaluation population; a complete NBA player universe is not assumed. Missing/zero-GP rows cannot normalize and are disclosed/excluded, never filled. Past-season browser statistics are blocked, not relabeled as current forecasts.
+3. Open one Yahoo draft tab and the deployed Helper in the **same Chrome/Edge profile**. Reload both tabs and connect. Show Results → Round by Round in that same draft tab to collect picks. Do not open a second draft client. Keep the device awake; browser background throttling/disconnection can pause recommendations.
+4. View the Yahoo player/stat table (and paginate/scroll for coverage) or upload a verified current-season board. In the normal Players screen choose **Remaining Games (proj)** for current-season totals with FGM/FGA/FTM/FTA; those volumes were verified on 25 actual displayed rows. Extension 0.2.2 retains this source when a live table later supplies percentages only. Live-only projections support seven categories. Browser-visible subsets are explicitly labeled as the evaluation population; a complete NBA player universe is not assumed. Missing/zero-GP rows cannot normalize and are disclosed/excluded, never filled. Past-season browser statistics are blocked, not relabeled as current forecasts.
 5. Confirm `Helper 수신 확인 버전` in the extension and the matching receipt in the app. Run a mock draft and verify a real pick, undo, own roster, refresh recovery and stale pause before relying on this on draft day.
 
 No repeated manual draft/roster entry is required after setup. Full hands-off behavior remains conditional on actual Yahoo room/Chrome integration validation.
@@ -55,6 +54,14 @@ These tests do not substitute for actual installed-extension → Yahoo → hoste
 
 Existing deployment: https://nba-draft-helper.onrender.com/ . No new paid service is required for browser persistence. Keep existing Render service settings; repository `render.yaml` is not reapplied automatically.
 
-At implementation time: Python/worker/transport/browser fixtures are tested, and 25 actually displayed current-season Yahoo projection rows pass all nine-category normalization/volume calculations. The user reports Chrome installation; actual extension receipt, simultaneous Yahoo draft connections, live league 30375 picks, full player-pool coverage and multi-hour reliability remain unverified. Do not describe the system as fully live-validated until those checks pass.
 
 Never commit Yahoo auth links, credentials, private league snapshots or browser backups. The public repository contains code and clearly synthetic test fixtures only.
+
+## 0.2.2: Yahoo single-client correction
+
+Actual user testing showed Yahoo disconnects an existing draft client when the extension opens a duplicate. The observer-tab design failed and has been removed. The worker never duplicates, opens, activates or closes a draft tab, including when old auto_monitor settings remain. Close redundant draft tabs yourself and reload the one remaining draft after updating/reloading the extension.
+
+Capture is now passive in one draft client: Players supplies statistics/ADP; Results → Round by Round supplies picks when visible. No automatic tab navigation or drafting actions occur. A duplicate-client logout is detected and invalidates freshness while retaining saved picks. Result visibility gaps pause recommendations after 45 seconds.
+
+IMPORTANT: This is a safe interim correction, not completion of the original hands-off goal. Continuous full-history capture while the user stays on Players remains unresolved. The user screenshot confirms extension-to-hosted-Helper ACK revision 10, but that alone does not validate real pick/recommendation synchronization. Actual post-update single-client draft testing is still required.
+

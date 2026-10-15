@@ -11,6 +11,7 @@
   const out={version:1,league_id:match[1],season,historical,source_url:u.origin+u.pathname+(historical?'?draft_results_period=previous':''),captured_at:new Date().toISOString(),picks:[],players:[],adp:[],settings:{},teams:[]};
   if(liveMatch){
    out.live=true;out.room_id=liveMatch[1];out.results_visible=false;
+   if(/You have been logged off because you logged in from another draft client/i.test(text(doc.body))){out.connection_error='Yahoo 중복 드래프트 접속으로 연결이 끊겼습니다. 드래프트 탭 하나만 남기고 새로고침하세요.';return out;}
    const header=text(doc.body),clock=header.match(/Round\s+(\d+)\s*,\s*Pick\s+(\d+)/i);
    if(clock){const r=Number(clock[1]),p=Number(clock[2]);if(p>=1&&p<=12){out.current_pick=(r-1)*12+p;const wait=header.match(/You(?:'|’)re up in\s+(\d+)\s+Picks?/i);const mine=/Your Pick|You(?:'|’)re on the clock/i.test(header);if(wait||mine){const own=out.current_pick+(wait?Number(wait[1]):0),round=Math.floor((own-1)/12)+1,within=(own-1)%12+1;out.draft_slot=round%2?within:13-within;}}}
   }
