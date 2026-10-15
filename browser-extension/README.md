@@ -1,4 +1,6 @@
-# Yahoo browser bridge 0.2.2
+# Yahoo browser bridge 0.2.3
+
+Later-round visible clocks support both overall and within-round Pick numbering, checked against the displayed Round. Missing live clocks clear the stored current pick and pause recommendations rather than reusing a first-round value. The single-client correction below remains in force.
 
 Load this folder unpacked in Chrome/Edge developer mode. Only `storage` permission and content scripts on Yahoo basketball/Helper component pages are used. No cookies, credentials, Yahoo API, hidden endpoints or automated player selections.
 

@@ -178,6 +178,12 @@ def test_connection_error_blocks_fresh_history_too():
     b=snapshot();b['connection_error']='Yahoo duplicate client'
     assert not derive_state(b,'123',2026,'9')['ready']
 
+def test_live_clock_is_required_and_seventeen_picks_agree_with_pick_eighteen():
+    b=snapshot();b.pop('current_pick');s=derive_state(b,'123',2026,'9')
+    assert s['current'] is None and not s['ready']
+    b=snapshot();b['picks']=[dict(pick=i,player_id=str(i),player='Synthetic',team='__OUR_TEAM__' if i==3 else 'Other') for i in range(1,18)]
+    b['current_pick']=18;s=derive_state(b,'123',2026,'9');assert s['ready'] and s['current']==18
+
 def test_different_round_one_two_pairs_select_different_best_punts():
     m=evaluate_board(fixture());m.z.loc[:,:]=1
     m.z.loc[['1','2'],['PTS','REB']]=[-4,-3]

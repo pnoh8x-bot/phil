@@ -30,5 +30,22 @@ await test('actual logout message stops parser before stale tables can be read',
 const {parse}=require('../browser-extension/parser.js');const doc={body:{textContent:'You have been logged off because you logged in from another draft client.'},querySelector:()=>null};
 const parsed=parse(doc,'https://basketball.fantasysports.yahoo.com/draftclient/nba/123/9');assert.ok(parsed.connection_error);assert.equal(parsed.picks.length,0);assert.equal(parsed.results_visible,false);
 });
+await test('visible clock accepts later-round overall and within-round picks consistently',()=>{
+const {parse}=require('../browser-extension/parser.js');
+const parseClock=text=>parse({body:{textContent:text},querySelector:()=>null,querySelectorAll:()=>[]},'https://basketball.fantasysports.yahoo.com/draftclient/nba/123/9');
+for(let overall=1;overall<=60;overall++){
+const r=Math.floor((overall-1)/12)+1,within=(overall-1)%12+1;
+assert.equal(parseClock('Round '+r+', Pick '+overall).current_pick,overall);
+assert.equal(parseClock('Round '+r+' · Pick '+within).current_pick,overall);
+}
+assert.equal(parseClock('Round 2, Pick 99').current_pick,undefined);
+assert.equal(parseClock("You're up in 0 Picks Round 2, Pick 18").draft_slot,7);
+});
+await test('missing live clock invalidates cached pick instead of reusing first-round clock',()=>{
+let old=reduce(null,base(),config);const o=base();delete o.current_pick;
+o.picks=Array.from({length:17},(_,i)=>({pick:i+1,player_id:String(i+1),player:'Synthetic',team:'Other'}));
+let s=reduce(old,o,config);assert.equal(s.current_pick,undefined);assert.equal(s.history_complete,false);assert.equal(s.picks.length,17);
+o.current_pick=18;s=reduce(s,o,config);assert.equal(s.current_pick,18);assert.equal(s.history_complete,true);
+});
 process.stdout.write(tests+' JavaScript checks passed (mock Chrome API)\n');
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -1,5 +1,7 @@
 # NBA Draft Helper
 
+0.2.3 fixes later-round clock parsing: `Round 2, Pick 18` (overall) and `Round 2, Pick 6` (within round) both map to overall 18 in this 12-team model. Inconsistent round/pick combinations are rejected. Missing live clocks invalidate the stored current pick and pause recommendations; no historical first-round clock is reused and partial records never establish the live current pick.
+
 12-team H2H 9CAT snake draft assistant. Yahoo API access is not required. Draft actions remain in Yahoo.
 
 ## Implemented

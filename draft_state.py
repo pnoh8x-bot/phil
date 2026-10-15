@@ -19,7 +19,7 @@ def derive_state(raw,league,season,team_id,teams=12):
     scoreboard=s.get('current_pick')
     after=max((p['pick'] for p in s['picks']),default=0)+1
     if scoreboard is not None and scoreboard<after:raise ValueError('Current pick is older than result history')
-    current=scoreboard if scoreboard is not None else after if s['complete_pick_sequence'] and s['picks'] else None
+    current=scoreboard if scoreboard is not None else after if not s.get('live') and s['complete_pick_sequence'] and s['picks'] else None
     stamp=s.get('picks_at')
     try:age=(datetime.now(timezone.utc)-datetime.fromisoformat(stamp.replace('Z','+00:00'))).total_seconds()
     except (ValueError,TypeError,AttributeError):age=None
