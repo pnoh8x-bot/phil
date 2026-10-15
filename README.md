@@ -1,3 +1,5 @@
+Version 0.3.1: broaden same-client view labels to plain div/span; recognize Name-column player tables; distinguish an unknown view from input-idle waiting; release pointer hold on window blur/cancel. Actual user Chrome verification remains pending.
+
 # NBA Draft Helper
 
 Version 0.3.0 adds a single ordinary-page collector that selects All Players and Remaining Games (proj), follows observed next-page links, persists the full displayed pool, then collects publicly displayed Basic ADP pages. No Yahoo API requests, cookie reads, duplicate draft clients or draft actions are used. The existing draft tab observes Results during idle intervals and restores its previous view. Mouse/keyboard activity pauses view changes. Missing or stale data still blocks recommendations. Collection progress, missing owned players and completed-draft state are explicit.

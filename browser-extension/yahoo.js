@@ -14,6 +14,9 @@
  let activity=0,monitorBusy=false,pressed=false;
  for(const name of ['pointerdown','keydown','wheel','touchstart'])document.addEventListener(name,e=>{if(e.isTrusted){activity=Date.now();if(name==='pointerdown')pressed=true;}},{capture:true,passive:true});
  document.addEventListener('pointerup',()=>{pressed=false;},{capture:true,passive:true});
+ // Pointer-up outside the document must not leave the monitor permanently busy.
+ for(const name of ['blur','pointercancel'])window.addEventListener(name,()=>{pressed=false;});
+ document.addEventListener('visibilitychange',()=>{if(document.hidden)pressed=false;});
  setInterval(async()=>{
   if(monitorBusy||!/^\/draftclient\/nba\/\d+\/\d+\/?$/.test(location.pathname))return;
   const {nbaConfig:c}=await chrome.storage.local.get('nbaConfig');

@@ -129,5 +129,17 @@ await test('production collector runner walks stats pages then ADP pages and com
  await run();await new Promise(r=>setTimeout(r,0));assert.equal(phase,'adp');assert.equal(state.players.length,50);assert.equal(state.collection.status,'complete');
  await run();await new Promise(r=>setTimeout(r,0));assert.equal(page,2);await tick();assert.equal(state.adp_collection.status,'complete');assert.equal(state.adp.length,2);assert.equal(state.players.length,50);assert.ok(done);
 });
+await test('plain div/span Yahoo navigation and Name statistic header are recognized',()=>{
+ const monitor=require('../browser-extension/live-monitor.js');
+ const leaf={textContent:'Results',getClientRects:()=>[1],getAttribute:()=>null},outer={...leaf,contains:e=>e===leaf};
+ assert.equal(monitor.tab({querySelectorAll:()=>[outer,leaf]},'Results'),leaf);
+ const doc={querySelectorAll:s=>s==='table thead'?[{textContent:'Name ADP FG% PTS REB'}]:[],querySelector:s=>s==='.ys-player[data-id]'?{}:null};
+ assert.equal(monitor.selected(doc),'Players');
+});
+await test('unknown current view is reported separately from recent user activity',async()=>{
+ const monitor=require('../browser-extension/live-monitor.js'),doc={querySelectorAll:()=>[],querySelector:()=>null};
+ const result=await monitor.observe({doc,capture:async()=>{},idle:()=>99999});
+ assert.equal(result.status,'unrecognized_view');assert.ok(!result.reason.includes('사용 중'));
+});
 process.stdout.write(tests+' JavaScript checks passed (mock Chrome API)\n');
 })().catch(e=>{console.error(e);process.exitCode=1});

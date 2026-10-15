@@ -3,21 +3,26 @@
 (function(root){
  const clean=s=>(s||'').trim().replace(/\s+/g,' ');
  function tab(doc,label){
-  const candidates=Array.from(doc.querySelectorAll('[role="tab"],button,a,li'));
-  return candidates.find(e=>clean(e.textContent)===label&&e.getClientRects().length&&e.getAttribute('aria-disabled')!=='true'&&!e.disabled);
+  const candidates=Array.from(doc.querySelectorAll('[role="tab"],button,a,li,div,span'));
+  const visible=candidates.filter(e=>clean(e.textContent)===label&&e.getClientRects().length&&e.getAttribute('aria-disabled')!=='true'&&!e.disabled);
+  // Yahoo also renders its navigation as plain div/span click targets.
+  // Prefer the innermost visible label: its click bubbles to the real handler.
+  return visible.find(e=>!visible.some(other=>other!==e&&e.contains?.(other)))||visible[0];
  }
  function selected(doc){
   const marked=['Players','Board','Results','Standings'].find(name=>{const e=tab(doc,name);return e&&(e.getAttribute('aria-selected')==='true'||/(^|[-_\s])(selected|active)($|[-_\s])/i.test(e.className+' '+(e.parentElement?.className||'')));});
   if(marked)return marked;
   if(resultsTable(doc))return 'Results';
   const heads=Array.from(doc.querySelectorAll('table thead')).map(e=>clean(e.textContent));
-  if(heads.some(s=>/PTS/.test(s)&&/FG%/.test(s)&&/Player/i.test(s)))return 'Players';
   if(heads.some(s=>/^Rank Team/.test(s)))return 'Standings';
+  // Some draft tables call the name column "Name" rather than "Player".
+  if(heads.some(s=>/PTS/.test(s)&&/FG%/.test(s))&&doc.querySelector('.ys-player[data-id]'))return 'Players';
  }
  function resultsTable(doc){return Array.from(doc.querySelectorAll('table')).find(t=>Array.from(t.querySelectorAll('thead tr')).at(-1)?.textContent.replace(/\s+/g,'').trim()==='PickPlayerTeam');}
  async function observe({doc,url,capture,idle,delay=ms=>new Promise(r=>setTimeout(r,ms))}){
   const original=selected(doc),subOriginal=original==='Results'?['Teams','Round by Round','Positions Drafted Grid'].find(name=>{const e=tab(doc,name);return e&&(e.getAttribute('aria-selected')==='true'||/(^|[-_\s])(selected|active)($|[-_\s])/i.test(e.className));}):null;
-  if(!original||idle()<2500)return {status:'waiting',reason:'사용 중인 화면은 전환하지 않습니다.'};
+  if(!original)return {status:'unrecognized_view',reason:'Yahoo 현재 탭을 인식하지 못했습니다. 결과 화면 자동 전환이 보류됩니다.'};
+  if(idle()<2500)return {status:'waiting',reason:'사용자 입력 중 · 마지막 입력 후 2.5초 동안 화면 전환을 기다립니다.'};
   const scrolls=[];let changed=false;
   try{
    if(original!=='Results'){const e=tab(doc,'Results');if(!e)return {status:'error',reason:'Results 탭을 찾지 못했습니다.'};e.click();changed=true;await delay(350);}
