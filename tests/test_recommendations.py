@@ -184,6 +184,13 @@ def test_live_clock_is_required_and_seventeen_picks_agree_with_pick_eighteen():
     b=snapshot();b['picks']=[dict(pick=i,player_id=str(i),player='Synthetic',team='__OUR_TEAM__' if i==3 else 'Other') for i in range(1,18)]
     b['current_pick']=18;s=derive_state(b,'123',2026,'9');assert s['ready'] and s['current']==18
 
+def test_pause_reasons_distinguish_stale_clock_gaps_and_partial_observation():
+    s=derive_state(snapshot(90),'123',2026,'9');assert {x['code'] for x in s['pause_reasons']}=={'stale_results'}
+    b=snapshot();del b['current_pick'];s=derive_state(b,'123',2026,'9');assert {x['code'] for x in s['pause_reasons']}=={'unknown_clock'}
+    b=snapshot();b['current_pick']=7;s=derive_state(b,'123',2026,'9');assert s['missing_picks']==[4,5,6] and not s['ready']
+    b=snapshot();b['history_complete']=False;s=derive_state(b,'123',2026,'9');assert {x['code'] for x in s['pause_reasons']}=={'unverified_history'}
+    s=derive_state(snapshot(),'123',2026,'9');assert s['ready'] and not s['pause_reasons']
+
 def test_different_round_one_two_pairs_select_different_best_punts():
     m=evaluate_board(fixture());m.z.loc[:,:]=1
     m.z.loc[['1','2'],['PTS','REB']]=[-4,-3]

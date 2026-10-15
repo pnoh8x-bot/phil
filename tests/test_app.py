@@ -28,6 +28,7 @@ def test_ui_stale_history_stops_recommendation_cards():
     at=run_ui(age=90)
     assert any('추천 일시 중지' in x.value for x in at.warning)
     assert not any('Yahoo ID' in x.value for x in at.markdown)
+    assert any('마지막 지명 결과 수신이 90초' in x.value for x in at.markdown)
 
 def test_ui_duplicate_client_disconnect_never_shows_cards():
     at=run_ui(connection_error=True)

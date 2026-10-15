@@ -81,6 +81,12 @@ def dashboard():
         if raw.get('connection_error'):
             st.error(raw['connection_error']);return
         age=state['age_seconds'];st.caption('결과 표 수신: '+(f'{max(0,int(age))}초 전' if age is not None else '미확인'))
+        if not state['ready']:
+            st.warning('추천 일시 중지 · 아래 미확인 항목이 해결되면 자동으로 다시 계산합니다.')
+            for reason in state['pause_reasons']:st.write('• '+reason['message'])
+        with st.expander('동기화 상세'):
+            st.write(f"현재 전체 픽: {state['current'] or '미확인'} · 수집 결과의 다음 픽: {state['history_next']} · 내 순번: {state['slot'] or '미확인'}")
+            st.write('이력 연결: '+('확인' if state['snapshot']['complete_pick_sequence'] else '누락 있음')+' · 마지막 결과 관찰 검증: '+('확인' if state['snapshot'].get('history_complete',True) else '미완료'))
         rows=st.session_state.get('board_override');board=pd.DataFrame(rows) if rows else browser_board(raw)
         if board is None:
             st.warning('선수 통계가 없습니다. Yahoo 선수 표를 열거나 검증된 통계 파일을 연결하세요.');return
@@ -91,7 +97,11 @@ def dashboard():
             st.error('통계 시즌이 연결 시즌과 다릅니다. Yahoo 통계 선택을 현재 시즌으로 바꾸세요. 지난 시즌 수치를 현재 예측으로 사용하지 않습니다.');return
         model=evaluate_board(board,st.session_state.get('board_basis'))
         st.caption(f"평가 모집단: 수집/파일 선수 {model.population}명 · 평가 가능 {len(model.categories)}/9 카테고리 · 전체 NBA 선수 수집을 보장하지 않습니다.")
-        if model.unavailable:st.warning('평가 제외: '+' / '.join(k+': '+v for k,v in model.unavailable.items()))
+        if model.unavailable:
+            descriptions={k:('슛 성공·시도 수가 없어 평가 불가' if k in ('FG%','FT%') and 'volume missing' in v else v) for k,v in model.unavailable.items()}
+            st.warning('평가 제외: '+' / '.join(k+': '+v for k,v in descriptions.items()))
+            if any('volume missing' in v for v in model.unavailable.values()):
+                st.caption('9CAT 전체 평가에는 Yahoo 일반 Players 화면의 Stats → Remaining Games (proj)에서 FGM/A·FTM/A를 수집하거나 검증된 통계 파일을 연결하세요. 드래프트 방을 복제하지 않고 일반 선수 목록을 이용합니다.')
         if model.normalization_unavailable:st.warning('GP가 0이거나 없어 경기당 통계를 계산할 수 없는 선수는 추천에서 제외합니다. Yahoo ID: '+', '.join(model.normalization_unavailable))
         profile=roster_profile(model,state['ours'])
         st.subheader('내 로스터 · 누적 카테고리')
@@ -107,7 +117,7 @@ def dashboard():
             st.dataframe(pd.DataFrame([{'펀트':', '.join(p['punt']) or '없음','평가점수':p['score'],'유지':', '.join(p['retained'])} for p in strategies[:5]]),hide_index=True)
         else:st.caption('초반 지명 조합과 검증된 통계가 모이면 계산합니다.')
         if not state['ready']:
-            st.warning('추천 일시 중지: 최신 결과, 전체 지명 기록, 내 팀과 스네이크 순번을 모두 확인해야 합니다. 같은 Yahoo 탭에서 Results → Round by Round를 표시하세요.');return
+            return
         recs=recommend(model,state['ours'],state['drafted'],state['current'],state['slot'],punts)
         st.subheader('다음 추천 · Must Pick 2 / Backup 2')
         if not recs:st.warning('검증된 미지명 후보가 없습니다.');return
