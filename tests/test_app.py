@@ -57,3 +57,13 @@ def test_component_packet_flows_through_browser_board_to_ack_and_recommendations
     cards=[x.value for x in at.markdown if 'Yahoo ID' in x.value]
     assert len(cards)==4 and all(x.rsplit('Yahoo ID ',1)[1] not in {'1','2','3'} for x in cards)
 
+def test_prior_season_browser_stats_never_become_current_projections():
+    raw=snapshot();raw['revision']=20
+    b=fixture();b['ADP_RANK']=1;b['STAT_SEASON']=2025;b['STAT_SOURCE']='2025-26 Season (avg)';raw['board']=b.to_dict('records')
+    packet={'config':{'league_id':'123','team_id':'9','season':2026},'snapshot':raw}
+    with patch('streamlit.components.v1.declare_component',return_value=lambda **kw:packet):
+        at=AppTest.from_file(str(Path(__file__).parents[1]/'app.py')).run()
+    assert not at.exception
+    assert any('통계 시즌이 연결 시즌과 다릅니다' in x.value for x in at.error)
+    assert not any('Yahoo ID' in x.value for x in at.markdown)
+

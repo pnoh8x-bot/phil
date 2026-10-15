@@ -82,9 +82,15 @@ def dashboard():
         rows=st.session_state.get('board_override');board=pd.DataFrame(rows) if rows else browser_board(raw)
         if board is None:
             st.warning('선수 통계가 없습니다. Yahoo 선수 표를 열거나 검증된 통계 파일을 연결하세요.');return
+        sources=sorted(set(board['STAT_SOURCE'].dropna().astype(str))) if 'STAT_SOURCE' in board else []
+        st.caption('통계 출처 기준: '+(', '.join(sources) or '검증 파일의 STAT_BASIS'))
+        prior_source=any(re.search(r'20\d{2}',src) and int(re.search(r'20\d{2}',src)[0])!=int(c['season']) for src in sources)
+        if not rows and (prior_source or 'STAT_SEASON' in board and (pd.to_numeric(board.STAT_SEASON,errors='coerce')!=int(c['season'])).any()):
+            st.error('통계 시즌이 연결 시즌과 다릅니다. Yahoo 통계 선택을 현재 시즌으로 바꾸세요. 지난 시즌 수치를 현재 예측으로 사용하지 않습니다.');return
         model=evaluate_board(board,st.session_state.get('board_basis'))
         st.caption(f"평가 모집단: 수집/파일 선수 {model.population}명 · 평가 가능 {len(model.categories)}/9 카테고리 · 전체 NBA 선수 수집을 보장하지 않습니다.")
         if model.unavailable:st.warning('평가 제외: '+' / '.join(k+': '+v for k,v in model.unavailable.items()))
+        if model.normalization_unavailable:st.warning('GP가 0이거나 없어 경기당 통계를 계산할 수 없는 선수는 추천에서 제외합니다. Yahoo ID: '+', '.join(model.normalization_unavailable))
         profile=roster_profile(model,state['ours'])
         st.subheader('내 로스터 · 누적 카테고리')
         owned=model.board.loc[state['ours']];st.write(', '.join(owned.PLAYER) if len(owned) else '아직 지명한 선수 없음')

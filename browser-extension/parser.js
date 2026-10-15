@@ -1,7 +1,7 @@
 /* Pure DOM parser. No fetch, cookies, page internals, or hidden network calls. */
 (function(root){
  const text=e=>(e?.textContent||'').trim().replace(/\s+/g,' ');
- const number=s=>/^[-+]?\d*\.?\d+%?$/.test(s||'')?Number(s.replace('%','')):null;
+ const number=s=>{if(typeof s!=='string')return null;if(s.includes(',')){if(!/^[-+]?\d{1,3}(,\d{3})+(\.\d+)?%?$/.test(s))return null;s=s.replace(/,/g,'');}return /^[-+]?\d*\.?\d+%?$/.test(s)?Number(s.replace('%','')):null;};
  const player=row=>{const a=Array.from(row.querySelectorAll('a[href]')).find(a=>/\/nba\/players\/\d+\/?$/.test(new URL(a.href,'https://sports.yahoo.com').pathname));if(a)return {id:a.href.match(/players\/(\d+)/)[1],name:text(a),cell:a.closest('td')};const live=row.querySelector('.ys-player[data-id]');return live?{id:live.getAttribute('data-id'),name:live.querySelector('img')?.getAttribute('title')||text(live.querySelector('span')),cell:live.closest('td')}:null};
  function parse(doc,url){
   const u=new URL(url), liveMatch=u.pathname.match(/^\/draftclient\/nba\/(\d+)\/(\d+)\/?$/), match=u.pathname.match(/^\/nba\/(\d+)(?:\/|$)/)||liveMatch;if(!match)return null;
@@ -41,7 +41,8 @@
     if(headers.includes('PTS') && headers.includes('FG%')){
      const statMode=liveMatch?Array.from(doc.querySelectorAll('select option:checked')).map(x=>text(x)).find(x=>/Stats$/.test(x))||'Live draft displayed stats':text(doc.querySelector('#statselect option:checked'));
      const record={YAHOO_ID:p.id,PLAYER:p.name,STAT_SOURCE:statMode};
-     record.STAT_BASIS=/Average|\(avg\)/i.test(statMode)?'per_game':/Total|Proj Stats/i.test(statMode)?'season_total':'unknown';
+     record.STAT_BASIS=/Average|\(avg\)/i.test(statMode)?'per_game':/Total|Proj Stats|^Remaining Games \(proj\)$/i.test(statMode)?'season_total':'unknown';
+     record.STAT_SEASON=Number(statMode.match(/20\d{2}/)?.[0]||doc.querySelector('#statselect option:checked')?.value.match(/20\d{2}$/)?.[0]||out.season);
      for(const [target,source] of Object.entries({'PTS':'PTS','REB':'REB','AST':'AST','STL':'ST','BLK':'BLK','3PM':'3PTM','TO':'TO','FG%':'FG%','FT%':'FT%','GP':'GP*'}))record[target]=number(val(source));
      if(liveMatch)record.GP=number(val('GP'));
      for(const prefix of ['FG','FT']){const pair=val(prefix+'M/A*').split('/');if(pair.length===2){record[prefix+'M']=number(pair[0]);record[prefix+'A']=number(pair[1]);}}

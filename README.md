@@ -20,7 +20,7 @@
 1. Download `browser-extension.zip`, unpack, enable developer mode at `chrome://extensions`, and load the unpacked folder. Update/reload an older extension installation.
 2. In the extension enter your Yahoo team URL. For mock rooms also enter the room URL; only its numeric room ID is retained, never auth query strings.
 3. Open Yahoo and the deployed Helper in the **same Chrome/Edge profile**. Reload both tabs, connect, and leave the results observer tab open. Keep the device awake; browser background throttling/disconnection can pause recommendations.
-4. View the Yahoo player/stat table once (and scroll if virtualized) or upload a verified current-season board. Browser-visible subsets are explicitly labeled as the evaluation population. A complete NBA player universe is not assumed. Live Yahoo projections observed so far have percentages but no shot volumes: they support seven categories, **not complete nine-category evaluation**, until verified FGM/FGA/FTM/FTA are supplied.
+4. View the Yahoo player/stat table (and paginate/scroll for coverage) or upload a verified current-season board. In the normal Players screen choose **Remaining Games (proj)** for current-season totals with FGM/FGA/FTM/FTA; those volumes were verified on 25 actual displayed rows. Extension 0.2.1 retains this source when a live table later supplies percentages only. Live-only projections support seven categories. Browser-visible subsets are explicitly labeled as the evaluation population; a complete NBA player universe is not assumed. Missing/zero-GP rows cannot normalize and are disclosed/excluded, never filled. Past-season browser statistics are blocked, not relabeled as current forecasts.
 5. Confirm `Helper 수신 확인 버전` in the extension and the matching receipt in the app. Run a mock draft and verify a real pick, undo, own roster, refresh recovery and stale pause before relying on this on draft day.
 
 No repeated manual draft/roster entry is required after setup. Full hands-off behavior remains conditional on actual Yahoo room/Chrome integration validation.
@@ -55,6 +55,6 @@ These tests do not substitute for actual installed-extension → Yahoo → hoste
 
 Existing deployment: https://nba-draft-helper.onrender.com/ . No new paid service is required for browser persistence. Keep existing Render service settings; repository `render.yaml` is not reapplied automatically.
 
-At implementation time: Python/worker/transport/browser fixtures are tested. Real Chrome extension installation, simultaneous Yahoo draft connections, live league 30375 picks, full real-data nine-category coverage and multi-hour draft reliability remain unverified. Do not describe the system as fully live-validated until those checks pass.
+At implementation time: Python/worker/transport/browser fixtures are tested, and 25 actually displayed current-season Yahoo projection rows pass all nine-category normalization/volume calculations. The user reports Chrome installation; actual extension receipt, simultaneous Yahoo draft connections, live league 30375 picks, full player-pool coverage and multi-hour reliability remain unverified. Do not describe the system as fully live-validated until those checks pass.
 
 Never commit Yahoo auth links, credentials, private league snapshots or browser backups. The public repository contains code and clearly synthetic test fixtures only.

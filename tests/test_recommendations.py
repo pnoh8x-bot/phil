@@ -85,7 +85,7 @@ def test_season_totals_normalize_to_same_per_game_values():
 def test_unknown_units_mixed_basis_zero_gp_stop():
     b=fixture();rejects(lambda:evaluate_board(b.drop(columns='STAT_BASIS')))
     b.loc[0,'STAT_BASIS']='season_total';rejects(lambda:evaluate_board(b))
-    b.STAT_BASIS='season_total';b.loc[0,'GP']=0;rejects(lambda:evaluate_board(b))
+    b.STAT_BASIS='season_total';b.GP=0;rejects(lambda:evaluate_board(b))
 
 def test_duplicate_missing_or_wrong_ids_stop():
     b=fixture();rejects(lambda:evaluate_board(b.drop(columns='YAHOO_ID')))
@@ -157,3 +157,27 @@ def test_missing_adp_is_unknown_not_yahoo_rank():
     b=fixture().drop(columns='ADP_AVG');b['ADP_AVG']=float('nan')
     r=recommend(evaluate_board(b),[],[],1,3)
     assert all(p['ADP'] is None and '판단 불가' in p['wait'] and p['future_candidates']==0 for p in r)
+
+def test_zero_or_missing_gp_rows_are_disclosed_and_excluded_without_imputation():
+    b=fixture();b.STAT_BASIS='season_total';b.loc[0,'GP']=0;b.loc[1,'GP']=float('nan')
+    m=evaluate_board(b)
+    assert set(m.normalization_unavailable)=={'1','2'}
+    assert m.z.loc[['1','2']].isna().all().all()
+    assert all(p['YAHOO_ID'] not in {'1','2'} for p in recommend(m,[],[],1,3))
+    rejects(lambda:recommend(m,['1'],[],1,3))
+
+def test_next_snake_distance_changes_current_pick_opportunity_cost():
+    m=evaluate_board(fixture());m.z.loc[:,:]=0
+    m.z.loc['1',:]=10;m.z.loc['2',:]=9
+    m.board.ADP_AVG=5;m.board.loc['1','ADP_AVG']=23
+    near=recommend(m,[],[],1,3);far=recommend(m,[],[],1,1)
+    assert near[0]['next_my_pick']==22 and near[0]['YAHOO_ID']=='2'
+    assert far[0]['next_my_pick']==24 and far[0]['YAHOO_ID']=='1'
+
+def test_different_round_one_two_pairs_select_different_best_punts():
+    m=evaluate_board(fixture());m.z.loc[:,:]=1
+    m.z.loc[['1','2'],['PTS','REB']]=[-4,-3]
+    m.z.loc[['3','4'],['AST','STL']]=[-4,-3]
+    a=punt_strategies(m,['1','2'])[0];b=punt_strategies(m,['3','4'])[0]
+    assert set(a['punt'])=={'PTS','REB'} and abs(a['score']-.5)<1e-12
+    assert set(b['punt'])=={'AST','STL'}

@@ -26,6 +26,7 @@ class Evaluation:
     unavailable:dict
     baseline:dict
     population:int
+    normalization_unavailable:tuple=()
 
 def evaluate_board(source,basis=None):
     """Population ddof=0. Rate categories use made-minus-baseline*attempts."""
@@ -49,10 +50,13 @@ def evaluate_board(source,basis=None):
         if bad.any() or np.isinf(b[col]).any():raise ValueError('Invalid numeric data: '+col)
         if (b[col].dropna()<0).any():raise ValueError('Negative statistic: '+col)
         if col in ('FG%','FT%') and (b[col].dropna()>1).any():raise ValueError('Percentages must be fractions: '+col)
+    unavailable_rows=()
     if basis=='season_total':
-        if 'GP' not in b or b['GP'].isna().any() or (b['GP']<=0).any():raise ValueError('Season totals require positive GP for every player')
+        if 'GP' not in b:raise ValueError('Season totals require observed GP')
+        valid_gp=b.GP.notna() & (b.GP>0)
+        unavailable_rows=tuple(b.index[~valid_gp])
         for col in list(COUNTS)+['FGM','FGA','FTM','FTA']:
-            if col in b:b[col]=b[col]/b['GP']
+            if col in b:b[col]=b[col]/b['GP'].where(valid_gp)
     values={};unavailable={};baseline={}
     for cat in COUNTS:
         if cat in b:values[cat]=b[cat]*(-1 if cat=='TO' else 1)
@@ -76,7 +80,7 @@ def evaluate_board(source,basis=None):
         if not math.isfinite(sd) or sd<=1e-12:unavailable[cat]='No observed variation';continue
         z[cat]=(v-v.mean())/sd
     if z.empty:raise ValueError('No category has enough verified variation')
-    return Evaluation(b,z,tuple(z.columns),unavailable,baseline,len(b))
+    return Evaluation(b,z,tuple(z.columns),unavailable,baseline,len(b),unavailable_rows)
 
 def roster_profile(model,ids):
     ids=list(dict.fromkeys(map(yahoo_id,ids)))
