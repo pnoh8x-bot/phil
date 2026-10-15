@@ -5,7 +5,8 @@
   try{
    const {nbaConfig}=await chrome.storage.local.get('nbaConfig');if(!nbaConfig?.enabled)return;
    const observation=NBAParser.parse(document,location.href);
-   if(!observation||observation.league_id!==nbaConfig.league_id||observation.historical||observation.season!==nbaConfig.season)return;
+   if(!observation||observation.historical||observation.season!==nbaConfig.season)return;
+   if(observation.live){if(observation.room_id!==(nbaConfig.draft_room_id||nbaConfig.league_id))return;observation.league_id=nbaConfig.league_id;}else if(observation.league_id!==nbaConfig.league_id)return;
    const key=`nba:${nbaConfig.league_id}:${nbaConfig.season}`;
    const stored=(await chrome.storage.local.get(key))[key]||{version:1,league_id:nbaConfig.league_id,season:nbaConfig.season,picks:[],players:[],adp:[],settings:{},teams:[]};
    const merge=(old,rows)=>Object.values(Object.fromEntries([...old,...rows].map(p=>[p.YAHOO_ID,p])));
@@ -14,7 +15,8 @@
    stored.settings={...stored.settings,...observation.settings};
    if(observation.teams.length)stored.teams=observation.teams;
    // Replace complete results snapshots, including undo/reset, never merge pick histories.
-   if(location.pathname.endsWith('/draftresults')){stored.picks=observation.picks;stored.draft_teams=observation.draft_teams;stored.draft_status=observation.draft_status;stored.picks_at=observation.captured_at;}
+   const canReplace=observation.results_visible||(!stored.live||Date.now()-Date.parse(stored.picks_at||0)>30000);
+   if((location.pathname.endsWith('/draftresults')||observation.results_visible)&&canReplace){stored.picks=observation.picks;stored.draft_teams=observation.draft_teams;stored.draft_status=observation.draft_status;stored.picks_at=observation.captured_at;stored.live=!!observation.live;}
    const adps=Object.fromEntries(stored.adp.map(p=>[p.YAHOO_ID,p]));
    stored.board=stored.players.filter(p=>adps[p.YAHOO_ID]).map(p=>({...p,...adps[p.YAHOO_ID],ADP_RANK:1}));
    stored.source_url=observation.source_url;stored.captured_at=observation.captured_at;

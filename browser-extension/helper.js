@@ -9,7 +9,7 @@
  window.addEventListener('message',async e=>{
   if(e.source!==window||e.origin!==location.origin)return;
   if(e.data?.type==='NBA_HELPER_READY'){args={league_id:String(e.data.league_id),season:e.data.season};publish();}
-  if(e.data?.type==='NBA_HELPER_CONNECT'&&/^\d+$/.test(String(e.data.league_id))){args={league_id:String(e.data.league_id),season:e.data.season};await chrome.storage.local.set({nbaConfig:{...args,enabled:true}});publish();}
+  if(e.data?.type==='NBA_HELPER_CONNECT'&&/^\d+$/.test(String(e.data.league_id))){args={league_id:String(e.data.league_id),season:e.data.season};const {nbaConfig}=await chrome.storage.local.get('nbaConfig');await chrome.storage.local.set({nbaConfig:{...(nbaConfig?.league_id===args.league_id?nbaConfig:{}),...args,enabled:true}});publish();}
   if(e.data?.type==='NBA_HELPER_DISCONNECT'){await chrome.storage.local.set({nbaConfig:{enabled:false}});window.postMessage({type:'NBA_HELPER_DISCONNECTED'},location.origin);}
  });
  chrome.storage.onChanged.addListener(publish);

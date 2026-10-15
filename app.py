@@ -16,7 +16,7 @@ with st.expander("Yahoo 브라우저 연결",expanded=True):
     ext=Path(__file__).parent/"browser-extension.zip"
     if ext.exists(): st.download_button("브라우저 연결 확장 다운로드",ext.read_bytes(),file_name="nba-yahoo-sync.zip")
     st.caption("압축 해제 → chrome://extensions 또는 edge://extensions → 개발자 모드 → 압축해제된 확장 로드. 확장에서 Yahoo 팀 주소를 입력한 뒤 이 앱과 Yahoo 탭을 새로고침하세요.")
-    st.caption("라이브 드래프트 방 직접 인식은 미검증입니다. 현재 Draft Results 표를 15초마다 갱신합니다. Yahoo가 결과를 늦게 반영하면 이 앱도 늦게 갱신됩니다.")
+    st.caption("드래프트 Players 화면에서 통계·ADP를 수집하고 Results → Round by Round를 열어두면 표시된 지명이 반영됩니다. 일반 Draft Results 페이지는 15초마다 갱신됩니다. 확장 설치 후 실제 수신 검증은 필요합니다.")
     team_url=st.text_input("Yahoo 팀 주소",placeholder="https://basketball.fantasysports.yahoo.com/nba/리그번호/팀번호")
     match=re.fullmatch(r"https://basketball\.fantasysports\.yahoo\.com/nba/(\d+)/(\d+)/?",team_url.strip())
     season=st.number_input("연결 시즌 시작 연도",2020,2100,datetime.now().year)
@@ -53,7 +53,7 @@ auto=snapshot is not None and st.checkbox("Yahoo 결과 표로 지명 현황 반
 if auto:
     pickteams=sorted({p["team"] for p in snapshot["picks"]})
     linked={str(t["id"]):t["name"] for t in snapshot.get("teams",[])}
-    teamname=linked.get(match[2])
+    teamname='__OUR_TEAM__' if snapshot.get('live') else linked.get(match[2])
     if not teamname and pickteams:teamname=st.selectbox("결과 표에서 내 팀 선택",pickteams,index=None)
     if snapshot["picks"] and not teamname:st.warning("내 팀을 확인해야 내 명단을 나눌 수 있습니다.")
     ours,others,missing=match_picks(board,snapshot["picks"],teamname)
