@@ -13,7 +13,7 @@
   for(const opt of doc.querySelectorAll('#fteamselect option')){if(/^\d+$/.test(opt.value))out.teams.push({id:opt.value,name:text(opt)});}
   for(const table of doc.querySelectorAll('table')){
    const head=Array.from(table.querySelectorAll('thead tr')).at(-1);
-   const headers=head?Array.from(head.children).map(x=>text(x).replace(/[\uE000-\uF8FF]/g,'').trim()):[];
+   const headers=head?Array.from(head.children).flatMap(x=>Array(Number(x.getAttribute('colspan')||1)).fill(text(x).replace(/[\uE000-\uF8FF]/g,'').trim())):[];
    const round=Number(text(table.querySelector('thead')).match(/^Round\s+(\d+)$/)?.[1]);
    const body=Array.from(table.querySelectorAll('tbody tr'));
    if(round && u.pathname.endsWith('/draftresults')){
