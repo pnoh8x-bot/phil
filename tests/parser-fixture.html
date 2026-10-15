@@ -1,0 +1,13 @@
+<!doctype html><html><meta charset="utf-8"><title>Yahoo parser checks</title><h1 id="result">Running</h1><pre id="details"></pre><script src="../browser-extension/parser.js"></script><script>
+const results=[];
+function check(name,f){try{f();results.push('PASS '+name)}catch(e){results.push('FAIL '+name+': '+e.message)}}
+function assert(c,m){if(!c)throw Error(m)}
+function parse(html,url='https://basketball.fantasysports.yahoo.com/nba/123/draftresults'){return NBAParser.parse(new DOMParser().parseFromString(html,'text/html'),url)}
+const round=(n,rows)=>`<table><thead><tr><th colspan="3">Round ${n}</th></tr></thead><tbody>${rows.map(([i,id,name,team])=>`<tr><td>${i}.</td><td class="player"><a href="https://sports.yahoo.com/nba/players/${id}">${name}</a></td><td>${team}</td></tr>`).join('')}</tbody></table>`;
+check('round positions become overall picks and reverse team mapping stays explicit',()=>{const r=parse(round(1,[[1,1,'A','X'],[2,2,'B','Y']])+round(2,[[1,3,'C','Y'],[2,4,'D','X']]));assert(r.picks[2].pick===3,'wrong overall');assert(r.picks[2].team==='Y','wrong owner');assert(r.draft_teams===2,'wrong teams')});
+check('previous season is marked historical',()=>{assert(parse('<select id="yfa-draftresults-select"><option selected>2025 season draft results</option></select>', 'https://basketball.fantasysports.yahoo.com/nba/123/draftresults?draft_results_period=previous').historical,'old season accepted')});
+check('scheduled draft has no invented picks',()=>{const r=parse('<div class="yfa-draft-scheduled">Draft scheduled</div>');assert(r.picks.length===0&&r.draft_status==='Draft scheduled','invented picks')});
+check('Yahoo rank is not ADP',()=>{const r=parse('<table><thead><tr><th>Pre-Season</th></tr></thead><tbody><tr><td><a href="https://sports.yahoo.com/nba/players/1">A</a>1</td></tr></tbody></table>');assert(r.adp.length===0,'rank used as adp')});
+check('displayed Avg Pick parsed without notes or unrelated links',()=>{const r=parse('<table><thead><tr><th>Player</th><th>Avg Pick</th></tr></thead><tbody><tr><td><a href="https://sports.yahoo.com/nba/players/1">A</a><a href="https://sports.yahoo.com/nba/players/1/news">Note</a></td><td>2.7</td></tr></tbody></table>');assert(r.adp[0].ADP_AVG===2.7&&r.adp[0].PLAYER==='A','bad adp')});
+document.getElementById('details').textContent=results.join('\n');document.getElementById('result').textContent=results.some(x=>x.startsWith('FAIL'))?'FAIL':'5 parser checks passed';
+</script></html>

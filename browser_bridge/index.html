@@ -1,0 +1,27 @@
+<!doctype html><html lang="ko"><meta charset="utf-8"><style>body{font:14px system-ui;color:#24334b;margin:0}button{padding:8px;border-radius:6px;border:1px solid #bbb;background:#fff;cursor:pointer}#status{padding:8px;background:#eef5ff;border-radius:6px}</style>
+<div id="status">브라우저 확장 연결을 기다립니다.</div>
+<button id="connect">이 리그 연결</button> <button id="disconnect">연결 해제</button>
+<script>
+let args={}, last='', ready=false;
+function send(type,extra={}){parent.postMessage({isStreamlitMessage:true,type,...extra}, location.origin)}
+function bridge(type,extra={}){window.postMessage({type,...extra},location.origin)}
+window.addEventListener('message', e=>{
+ if(e.source===parent && e.data?.type==='streamlit:render'){
+  args=e.data.args; ready=true; bridge('NBA_HELPER_READY',{league_id:args.league_id,season:args.season});
+ }
+ if(e.source!==window || e.origin!==location.origin)return;
+ if(e.data?.type==='NBA_HELPER_AVAILABLE' && ready)bridge('NBA_HELPER_READY',{league_id:args.league_id,season:args.season});
+ if(e.data?.type==='NBA_HELPER_SNAPSHOT' && ready){
+  const v=e.data.value; if(String(v?.league_id)!==String(args.league_id)||v?.season!==args.season)return;
+  document.getElementById('status').textContent=`브라우저 연결됨 · 지명 ${v.picks?.length||0}개 · ${v.captured_at||''}`;
+  const signature=JSON.stringify(v);if(signature===last)return;last=signature;
+  send('streamlit:setComponentValue',{value:v,dataType:'json'});
+ }
+ if(e.data?.type==='NBA_HELPER_DISCONNECTED'){
+  last='';document.getElementById('status').textContent='연결 해제됨';send('streamlit:setComponentValue',{value:null,dataType:'json'});
+ }
+});
+document.getElementById('connect').onclick=()=>bridge('NBA_HELPER_CONNECT',{league_id:args.league_id,season:args.season});
+document.getElementById('disconnect').onclick=()=>bridge('NBA_HELPER_DISCONNECT');
+send('streamlit:componentReady',{apiVersion:1});send('streamlit:setFrameHeight',{height:96});
+</script></html>

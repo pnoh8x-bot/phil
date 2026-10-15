@@ -50,9 +50,10 @@ def candidate_pool(board: pd.DataFrame, pick: int, ours: list[str], others: list
         pool = pool.loc[pool["PLAYER"].isin(confirmed)]
         pool["Availability"] = "Confirmed by user"
     else:
-        pool = pool.loc[pool["ADP_RANK"].between(pick-window,pick+window)]
+        adp_column = 'ADP_AVG' if 'ADP_AVG' in pool else 'ADP_RANK'
+        pool = pool.loc[pool[adp_column].between(pick-window,pick+window)]
         pool["Availability"] = "ADP-based candidate; not confirmed undrafted"
-    pool["Pick_gap"] = pool["ADP_RANK"] - pick
+    pool["Pick_gap"] = pool['ADP_AVG' if 'ADP_AVG' in pool else 'ADP_RANK'] - pick
     return pool.sort_values(["ADP_RANK"])
 
 def team_totals(board: pd.DataFrame, roster: list[str]) -> dict:
@@ -67,3 +68,4 @@ def team_totals(board: pd.DataFrame, roster: list[str]) -> dict:
         else:
             ans[prefix+"%"] = None
     return ans
+

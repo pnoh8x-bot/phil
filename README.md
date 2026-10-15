@@ -37,3 +37,12 @@ This repository is currently public. Do not commit credentials, private Yahoo dr
 3. Persistent database + authentication.
 4. Punt-adjusted 9CAT z-scores, ADP opportunity cost and next-pick-aware recommendations.
 5. Real draft-day testing before relying on live recommendations.
+
+
+## API-free Yahoo browser sync (preview)
+
+The optional Chrome/Edge extension in `browser-extension/` reads rendered Yahoo basketball tables. It does not call the Yahoo API, read cookies, save passwords, or submit draft picks. Download `browser-extension.zip` from the app and follow `browser-extension/README.md`.
+
+Supported sources: current-season round Draft Results tables, displayed player statistics, displayed Avg Pick, league settings and team labels. Historical results are rejected. Draft Results is reloaded every 15 seconds after the scheduled-draft notice disappears; this is not a promise of real-time Yahoo publishing. Live draft-room DOM support has not been field-tested. Keep the extension and Yahoo/Helper tabs open. Only visited player/ADP pages are collected, so an uploaded verified DraftBoard remains the most complete source. No private league/account data is committed to this repository.
+
+Run Python checks: `python tests/run_checks.py`. Browser parser fixtures: serve the repository locally and open `tests/parser-fixture.html`. Six Python checks and five browser fixture checks cover wrong season/league, duplicate/missing picks, identity matching, within-round numbering and ADP provenance. Actual in-draft latency and Chrome extension installation remain to be verified on the user's browser.
